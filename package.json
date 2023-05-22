@@ -1,0 +1,10 @@
+{
+  "scripts": {
+    "download": "node index.js"
+  },
+  "dependencies": {
+    "axios": "^1.4.0",
+    "progress": "^2.0.3",
+    "tar": "^6.1.15"
+  }
+}

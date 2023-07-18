@@ -18,25 +18,35 @@ const tag = cliArgs[1]; // Docker image tag from arguments
 const platform = cliArgs[2] || 'linux/arm64';
 
 async function downloadLayer(layer, i, token, downloadPath) {
-  const blobResponse = await axios.get(
-    `https://registry-1.docker.io/v2/${repo}/blobs/${layer.digest}`, 
-    {
-      headers: { 'Authorization': `Bearer ${token}` },
-      responseType: 'stream'
-    }
-  );
+  try {
+    console.log(`https://registry-1.docker.io/v2/${repo}/blobs/${layer.digest}`);
+    console.log(`Bearer ${token}`);
+    const blobResponse = await axios.get(
+      `https://registry-1.docker.io/v2/${repo}/blobs/${layer.digest}`, 
+      {
+        headers: { 'Authorization': `Bearer ${token}` },
+        responseType: 'stream'
+      }
+    );
 
-  const len = parseInt(blobResponse.headers['content-length'], 10);
-  const bar = new ProgressBar(`  downloading layer ${i} [:bar] :rate/bps :percent :etas`, { total: len });
+    const len = parseInt(blobResponse.headers['content-length'], 10);
+    const bar = new ProgressBar(`  downloading layer ${i} [:bar] :rate/bps :percent :etas`, { total: len });
 
-  blobResponse.data.on('data', chunk => bar.tick(chunk.length));
+    blobResponse.data.on('data', chunk => bar.tick(chunk.length));
 
-  // Create directory for each layer
-  const layerDigest = layer.digest.split(':')[1];
-  const layerPath = path.join(downloadPath, layerDigest);
-  fs.mkdirSync(layerPath, { recursive: true });
+    // Create directory for each layer
+    const layerDigest = layer.digest.split(':')[1];
+    const layerPath = path.join(downloadPath, layerDigest);
+    fs.mkdirSync(layerPath, { recursive: true });
 
-  await pipeline(blobResponse.data, fs.createWriteStream(path.join(layerPath, `layer.tar`)));
+    await pipeline(blobResponse.data, fs.createWriteStream(path.join(layerPath, `layer.tar`)));
+  } catch (error) {
+    console.log(`　layer${i}のダウンロードに失敗しました。下記URLに下記Bearerをつけて手動ダウンロードしてください。`);
+    console.log('********************************************************************************************');
+    console.log(`https://registry-1.docker.io/v2/${repo}/blobs/${layer.digest}`);
+    console.log(`Bearer ${token}`);
+    console.log('********************************************************************************************');
+  }
 }
 
 async function downloadConfig(config, token, downloadPath) {

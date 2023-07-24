@@ -19,8 +19,6 @@ const platform = cliArgs[2] || 'linux/arm64';
 
 async function downloadLayer(layer, i, token, downloadPath) {
   try {
-    console.log(`https://registry-1.docker.io/v2/${repo}/blobs/${layer.digest}`);
-    console.log(`Bearer ${token}`);
     const blobResponse = await axios.get(
       `https://registry-1.docker.io/v2/${repo}/blobs/${layer.digest}`, 
       {
@@ -43,6 +41,7 @@ async function downloadLayer(layer, i, token, downloadPath) {
   } catch (error) {
     console.log(`　layer${i}のダウンロードに失敗しました。下記URLに下記Bearerをつけて手動ダウンロードしてください。`);
     console.log('********************************************************************************************');
+    console.log(`保存先:${path.join(layerPath, 'layer.tar')}`);
     console.log(`https://registry-1.docker.io/v2/${repo}/blobs/${layer.digest}`);
     console.log(`Bearer ${token}`);
     console.log('********************************************************************************************');

@@ -1,3 +1,5 @@
+process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = 0;
+
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
@@ -40,7 +42,7 @@ async function downloadLayer(layer, i, token, downloadPath) {
   } catch (error) {
     console.log(`　layer${i}のダウンロードに失敗しました。下記URLに下記Bearerをつけて手動ダウンロードしてください。`);
     console.log('********************************************************************************************');
-    console.log(`保存先:${path.join(layerPath, 'layer.tar')}`);
+    console.log(`保存先:${path.join(path.join(downloadPath, layer.digest.split(':')[1]), 'layer.tar')}`);
     console.log(`https://registry-1.docker.io/v2/${repo}/blobs/${layer.digest}`);
     console.log(`Bearer ${token}`);
     console.log('********************************************************************************************');

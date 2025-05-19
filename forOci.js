@@ -17,7 +17,7 @@ if (cliArgs.length < 2) {
 
 const repo = cliArgs[0]; // Docker image repository name from arguments
 const tag = cliArgs[1]; // Docker image tag from arguments
-const platform = cliArgs[2] || 'linux/arm64';
+const platform = cliArgs[2] || 'linux/amd64';
 
 async function downloadLayer(layer, i, token, downloadPath) {
   try {

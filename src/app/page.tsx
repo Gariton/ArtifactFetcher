@@ -178,7 +178,10 @@ export default function Page() {
             
             <Modal
                 opened={opened}
-                onClose={close}
+                onClose={()=>{
+                    close();
+                    reset();
+                }}
                 centered
                 radius="lg"
                 size="lg"
@@ -225,7 +228,7 @@ export default function Page() {
 
                 <Stack
                     py="md"
-                    gap={3}
+                    gap={10}
                 >
                     <Group
                         justify="space-between"

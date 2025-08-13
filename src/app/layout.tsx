@@ -1,8 +1,9 @@
 'use client';
-import { AppShell, Container, Group, MantineProvider, Title } from "@mantine/core";
+import { ActionIcon, AppShell, Container, Group, MantineProvider, Title } from "@mantine/core";
 import { ReactNode } from "react";
 
 import "@mantine/core/styles.css";
+import { IconBrandGithub, IconBrandGithubFilled } from "@tabler/icons-react";
 
 export default function Layout({
     children
@@ -33,6 +34,17 @@ export default function Layout({
                                     >
                                         Docker Image Downloader
                                     </Title>
+                                    <ActionIcon
+                                        variant="transparent"
+                                        color="gray"
+                                        component="a"
+                                        href="https://github.com/Gariton/getDockerImageViaAPI"
+                                        target="_blank"
+                                    >
+                                        <IconBrandGithubFilled
+                                            size="1.3em"
+                                        />
+                                    </ActionIcon>
                                 </Group>
                             </Container>
                         </AppShell.Header>

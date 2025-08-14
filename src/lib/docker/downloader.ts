@@ -5,7 +5,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import * as tar from 'tar';
-import { ProgressBus } from "./progressBus";
+import { ProgressBus } from "../progressBus";
 
 const MEDIA = {
     INDEX: 'application/vnd.oci.image.index.v1+json',
@@ -62,7 +62,7 @@ async function downloadBlob(repository: string, digest: string, token: string, d
     const url = `https://registry-1.docker.io/v2/${repository}/blobs/${digest}`;
     const res = await requestWithRetry({ method: 'GET', url, headers: { Authorization: `Bearer ${token}` }, responseType: 'stream' });
     const total = parseInt(res.headers['content-length'] || '0', 10);
-    if (typeof index === 'number') bus.emitEvent({ type: 'layer-start', index, digest, total: total || undefined });
+    if (typeof index === 'number') bus.emitEvent({ type: 'item-start', index, digest, total: total || undefined });
 
     await fs.promises.mkdir(path.dirname(destFile), { recursive: true });
     const hash = crypto.createHash('sha256');
@@ -70,7 +70,7 @@ async function downloadBlob(repository: string, digest: string, token: string, d
     res.data.on('data', (chunk: Buffer) => {
         received += chunk.length;
         hash.update(chunk);
-        if (typeof index === 'number') bus.emitEvent({ type: 'layer-progress', index, received, total: total || undefined });
+        if (typeof index === 'number') bus.emitEvent({ type: 'item-progress', index, received, total: total || undefined });
     });
     await pipeline(res.data, fs.createWriteStream(destFile));
 
@@ -78,7 +78,7 @@ async function downloadBlob(repository: string, digest: string, token: string, d
     if (computed !== digest) {
         throw new Error(`Digest mismatch for ${destFile}. expected=${digest} got=${computed}`);
     }
-    if (typeof index === 'number') bus.emitEvent({ type: 'layer-done', index });
+    if (typeof index === 'number') bus.emitEvent({ type: 'item-done', index });
 }
 
 /**
@@ -101,7 +101,7 @@ export async function buildDockerImageTar({
     if (!manifest?.config?.digest || !Array.isArray(manifest.layers)) {
         throw new Error('Unexpected manifest structure (missing config or layers).');
     }
-    bus.emitEvent({ type: 'manifest-resolved', layers: manifest.layers });
+    bus.emitEvent({ type: 'manifest-resolved', items: manifest.layers });
     console.log(`manifestの解決完了: ${manifest.layers.length}レイヤー`)
 
     const safeRepo = repository.replace(/[\/]/g, '_');

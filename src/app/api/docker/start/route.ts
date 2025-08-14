@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { nanoid } from "nanoid";
 import { jobStore } from "@/lib/jobStore";
 import { ProgressBus, globalBusMap } from "@/lib/progressBus";
-import { buildDockerImageTar } from "@/lib/dockerDownloader";
+import { buildDockerImageTar } from "@/lib/docker/downloader";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

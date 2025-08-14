@@ -6,12 +6,19 @@ export type Layer = {
     size: number;
 }
 
+export type LockEntry = {
+    name: string;
+    version: string;
+    resolved?: string; // tarball URL
+    integrity?: string;
+};
+
 export type ProgressEvent =
     | { type: "stage"; stage: string }
-    | { type: "manifest-resolved"; layers: Layer[] }
-    | { type: 'layer-start'; index: number; digest: string; total?: number }
-    | { type: 'layer-progress'; index: number; received: number; total?: number }
-    | { type: 'layer-done'; index: number }
+    | { type: "manifest-resolved"; items: Layer[]|LockEntry[] }
+    | { type: 'item-start'; index: number; digest: string; total?: number }
+    | { type: 'item-progress'; index: number; received: number; total?: number }
+    | { type: 'item-done'; index: number }
     | { type: 'tar-writing' }
     | { type: 'done'; filename: string }
     | { type: 'error'; message: string };

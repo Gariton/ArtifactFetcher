@@ -1,7 +1,7 @@
 services:
-  DockerImageDownloader:
+  Downloader:
     image: library/node:24.5
-    container_name: DockerImageDownloader
+    container_name: Downloader
     tty: true
     working_dir: /app
     volumes:

@@ -21,6 +21,9 @@ export default function Npm () {
     const form = useForm({
         initialValues: {
             packages: ""
+        },
+        validate: {
+            packages: (v) => v=="" ? "パッケージ名を入力してください" : null
         }
     });
 
@@ -128,9 +131,10 @@ export default function Npm () {
                 <Stack>
                     <TextInput
                         label="パッケージ名"
+                        description="ダウンロードしたいパッケージ名をスペース区切りで入力"
                         size="lg"
                         radius="lg"
-                        placeholder="react"
+                        placeholder="react@^18 axios"
                         key={form.key("packages")}
                         {...form.getInputProps("packages")}
                         disabled={loading}

@@ -1,5 +1,5 @@
 'use client';
-import { Text, AppShell, Container, MantineProvider } from "@mantine/core";
+import { Text, AppShell, Container, MantineProvider, Flex, Center } from "@mantine/core";
 import { ReactNode } from "react";
 
 import "@mantine/core/styles.css";
@@ -29,9 +29,6 @@ export default function Layout({
                             breakpoint: "xs",
                             collapsed: {desktop: true, mobile: !opened}
                         }}
-                        footer={{
-                            height: 40
-                        }}
                     >
                         <AppShell.Header>
                             <Container
@@ -49,22 +46,29 @@ export default function Layout({
                             <AppNavbar />
                         </AppShell.Navbar>
                         <AppShell.Main>
-                            <Container
-                                size="md"
-                                py="lg"
+                            <Flex
+                                direction="column"
+                                gap="lg"
+                                mih="calc(100vh - 60px)"
                             >
-                                {children}
-                            </Container>
+                                <Container
+                                    size="md"
+                                    pt="md"
+                                    flex={1}
+                                >
+                                    {children}
+                                </Container>
+                                <Center
+                                    h={50}
+                                >
+                                    <Text
+                                        ta="center"
+                                    >
+                                        © 2025 Gariton_
+                                    </Text>
+                                </Center>
+                            </Flex>
                         </AppShell.Main>
-                        <AppShell.Footer
-                            withBorder={false}
-                        >
-                            <Text
-                                ta="center"
-                            >
-                                © 2025 Gariton_
-                            </Text>
-                        </AppShell.Footer>
                     </AppShell>
                 </MantineProvider>
             </body>

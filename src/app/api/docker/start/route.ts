@@ -21,12 +21,12 @@ export const POST = async (req: NextRequest) => {
     // 非同期でビルド開始
     (async () => {
         try {
-        jobStore.set(jobId, { status: 'running' });
-        const { tarPath, filename } = await buildDockerImageTar({ repository: repo, tag, platform: platform || 'linux/amd64', bus });
-        jobStore.set(jobId, { status: 'done', tarPath, filename });
+            jobStore.set(jobId, { status: 'running' });
+            const { tarPath, filename } = await buildDockerImageTar({ repository: repo, tag, platform: platform || 'linux/amd64', bus });
+            jobStore.set(jobId, { status: 'done', tarPath, filename });
         } catch (e: any) {
-        jobStore.set(jobId, { status: 'error', error: e?.message || 'failed' });
-        bus.emitEvent({ type: 'error', message: e?.message || 'failed' });
+            jobStore.set(jobId, { status: 'error', error: e?.message || 'failed' });
+            bus.emitEvent({ type: 'error', message: e?.message || 'failed' });
         }
     })();
 

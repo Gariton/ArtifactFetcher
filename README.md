@@ -1,41 +1,32 @@
-# Dockerイメージ取得スクリプト
-
-このリポジトリには、Docker Hubからイメージをダウンロードし、
+# アーティファクト取得スクリプト
+このリポジトリには、Docker Hubやnpm registryからイメージをダウンロードし、
 ローカル環境に展開するためのNode.jsスクリプトが含まれています。
 
 ## 前提条件
 - Node.jsが実行できる環境
-- `npm install`で依存パッケージ(`axios`, `progress`, `tar`)をインストール済みであること
+- `npm install`で依存パッケージをインストール済みであること
 
 ## 使い方
 ### 1. Dockerイメージのダウンロード
 ```
-npm run download -- <リポジトリ名> <タグ>
+npm run download -- docker <リポジトリ名> <タグ> [--platform <プラットフォーム>] [--host <downlaoderのURL>] [--out <出力パス>]
 ```
 例: `ubuntu:latest` を取得する場合
 ```
-npm run download -- library/ubuntu latest
+npm run download -- docker library/ubuntu latest --platform linux/amd64 --host https://downloader.inchiki.cloud
 ```
-ダウンロードが完了すると、`downloads/<リポジトリ名>@<タグ>.tar` が生成されます。
+ダウンロードが完了すると、`downloads/library_ubuntu-latest.tar` が生成されます。
 
-### 2. OCI形式でダウンロードする場合
-プラットフォームを指定してダウンロードしたい場合は次のコマンドを使用します。
+### 2. npmパッケージのダウンロード
 ```
-npm run download_oci -- <リポジトリ名> <タグ> [プラットフォーム]
+npm run download -- npm <リポジトリ名> <タグ> [--host <downlaoderのURL>] [--out <出力パス>]
 ```
-例: `linux/arm64` を指定
+例: `next@^18` を取得する場合
 ```
-npm run download_oci -- library/ubuntu latest linux/arm64
+npm run download -- npm next ^18 --host https://downloader.inchiki.cloud
 ```
+ダウンロードが完了すると、`downloads/next-^18.tar` が生成されます。
 
-### 3. Bearerトークンの取得
-```
-npm run bearer -- <リポジトリ名>
-```
-
-## 出力物
-- `downloads/` ディレクトリにイメージを展開したファイルと `manifest.json` が生成されます。
-- さらに `downloads/<リポジトリ名>@<タグ>.tar` にまとめられ、 `docker load -i` で読み込み可能です。
 
 ## ライセンス
 このリポジトリのコードはMITライセンスです。

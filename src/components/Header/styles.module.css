@@ -1,0 +1,4 @@
+.link {
+    border-radius: var(--mantine-radius-md);
+    color: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-0));
+}

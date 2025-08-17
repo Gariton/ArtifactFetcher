@@ -33,7 +33,7 @@ export default function Docker() {
         initialValues: {
             repo: "",
             tag: "",
-            platform: ""
+            platform: "linux/amd64"
         },
         validate: {
             repo: (v) => v=="" ? "リポジトリを指定してください" : null,
@@ -107,7 +107,6 @@ export default function Docker() {
                     size={60}
                 >
                     <IconBrandDocker
-                        color="blue"
                         style={{width: '70%', height: '70%'}}
                         stroke={1.3}
                     />

@@ -1,9 +1,9 @@
 'use client';
-import { ActionIcon, Anchor, AppShell, Container, Group, MantineProvider, Title } from "@mantine/core";
+import { AppShell, Container, MantineProvider } from "@mantine/core";
 import { ReactNode } from "react";
 
 import "@mantine/core/styles.css";
-import { IconBrandGithubFilled } from "@tabler/icons-react";
+import { AppHeader } from "@/components/Header";
 
 export default function Layout({
     children
@@ -25,42 +25,7 @@ export default function Layout({
                             <Container
                                 size="md"
                             >
-                                <Group
-                                    justify="space-between"
-                                    h={60}
-                                >
-                                    <Anchor
-                                        variant="text"
-                                        c="dark"
-                                        td="none"
-                                        href="/"
-                                    >
-                                        <Title
-                                            order={3}
-                                        >
-                                            Downloader
-                                        </Title>
-                                    </Anchor>
-                                    <Group>
-                                        <Anchor href="/docker">
-                                            Docker
-                                        </Anchor>
-                                        <Anchor href="/npm">
-                                            npm
-                                        </Anchor>
-                                        <ActionIcon
-                                            variant="transparent"
-                                            color="gray"
-                                            component="a"
-                                            href="https://github.com/Gariton/getDockerImageViaAPI"
-                                            target="_blank"
-                                        >
-                                            <IconBrandGithubFilled
-                                                size="1.3em"
-                                            />
-                                        </ActionIcon>
-                                    </Group>
-                                </Group>
+                                <AppHeader />
                             </Container>
                         </AppShell.Header>
                         <AppShell.Main>

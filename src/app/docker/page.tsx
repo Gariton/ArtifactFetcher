@@ -133,6 +133,7 @@ export default function Docker() {
                 <Stack>
                     <TextInput
                         label="Repository"
+                        description="欲しいDockerイメージ名を入力"
                         size="lg"
                         radius="lg"
                         placeholder="library/redis"

@@ -1,0 +1,23 @@
+import { Anchor, Stack } from "@mantine/core";
+import classes from "./styles.module.css";
+
+export const AppNavbar = () => {
+    return (
+        <Stack
+            p="md"
+        >
+            <Anchor
+                className={classes.link}
+                href="/docker"
+            >
+                Docker
+            </Anchor>
+            <Anchor
+                className={classes.link}
+                href="/npm"
+            >
+                npm
+            </Anchor>
+        </Stack>
+    );
+}

@@ -1,6 +1,7 @@
 import { AnchorCard } from "@/components/AnchorCard";
-import { Container, Space, Stack, ThemeIcon, Title } from "@mantine/core";
+import { Center, Container, Space, Stack, ThemeIcon, Title } from "@mantine/core";
 import { IconBrandDocker, IconBrandNpm, IconBrandPython } from "@tabler/icons-react";
+import Image from "next/image";
 
 const apps = [
     {
@@ -54,10 +55,18 @@ export default function Home() {
         <Container
             size="sm"
         >
+            <Center>
+                <Image
+                    alt="icon"
+                    src="/icon.png"
+                    width={170}
+                    height={170}
+                />
+            </Center>
             <Title
                 ta="center"
             >
-                Downloader
+                Artifact Fetcher
             </Title>
 
             <Space h="xl" />

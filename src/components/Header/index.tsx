@@ -1,9 +1,15 @@
-import { Group, Anchor, Title, ActionIcon, useMantineColorScheme } from "@mantine/core";
+import { Group, Anchor, Title, ActionIcon, useMantineColorScheme, Burger } from "@mantine/core";
 import { IconBrandGithubFilled, IconMoon, IconSun } from "@tabler/icons-react";
-
 import classes from "./styles.module.css";
+import { AppTitle } from "../AppTitle";
 
-export const AppHeader = () => {
+export const AppHeader = ({
+    navbarOpened,
+    toggleNavbar
+}: {
+    navbarOpened: boolean;
+    toggleNavbar: ()=>void;
+}) => {
 
     const { toggleColorScheme, colorScheme } = useMantineColorScheme();
 
@@ -12,27 +18,29 @@ export const AppHeader = () => {
             justify="space-between"
             h={60}
         >
-            <Anchor
-                variant="text"
-                td="none"
-                href="/"
+            <Group
+                align="center"
             >
-                <Title
-                    order={3}
-                >
-                    Artifact Fetcher
-                </Title>
-            </Anchor>
+                <Burger
+                    size="sm"
+                    hiddenFrom="xs"
+                    onClick={toggleNavbar}
+                    opened={navbarOpened}
+                />
+                <AppTitle />
+            </Group>
             <Group>
                 <Anchor
                     href="/docker"
                     className={classes.link}
+                    visibleFrom="xs"
                 >
                     Docker
                 </Anchor>
                 <Anchor
                     href="/npm"
-                    className={classes.link}    
+                    className={classes.link}
+                    visibleFrom="xs"
                 >
                     npm
                 </Anchor>
@@ -40,7 +48,7 @@ export const AppHeader = () => {
                     variant="transparent"
                     color="gray"
                     component="a"
-                    href="https://github.com/Gariton/getDockerImageViaAPI"
+                    href="https://github.com/Gariton/ArtifactFetcher"
                     target="_blank"
                 >
                     <IconBrandGithubFilled

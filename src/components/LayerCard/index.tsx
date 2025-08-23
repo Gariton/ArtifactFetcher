@@ -1,5 +1,5 @@
-import { Card, Group, Text, Loader, ThemeIcon, Stack, Progress } from "@mantine/core";
-import { IconCircleCheck } from "@tabler/icons-react";
+import { Card, Group, Text, Loader, ThemeIcon, Stack, Progress, Badge } from "@mantine/core";
+import { IconArrowRightDashed, IconCircleCheck } from "@tabler/icons-react";
 import { memo } from "react";
 
 export const LayerCard = memo(function LayerCardMemo({
@@ -7,13 +7,15 @@ export const LayerCard = memo(function LayerCardMemo({
     sha,
     progress,
     total,
-    received
+    received,
+    status
 }: {
     number: number;
     sha: string;
     progress: number;
     total: number;
     received: number;
+    status: "process"|"done"|"skipped"
 }) {
     return (
         <Card
@@ -33,7 +35,7 @@ export const LayerCard = memo(function LayerCardMemo({
                         >
                             Layer {number + 1}
                         </Text>
-                        {progress >= 100 ? (
+                        {status == "done" && (
                             <ThemeIcon
                                 variant="transparent"
                             >
@@ -42,16 +44,28 @@ export const LayerCard = memo(function LayerCardMemo({
                                     size="1rem"
                                 />
                             </ThemeIcon>
-                        ) : (
+                        )}
+                        {status == "process" && (
                             <Loader size="xs"/>
                         )}
+                        {status == "skipped" && (
+                            <Badge
+                                leftSection={<IconArrowRightDashed size="1em"/>}
+                                color="yellow"
+                                size="xs"
+                            >
+                                skipped
+                            </Badge>
+                        )}
                     </Group>
-                    <Text
-                        size="xs"
-                        c="dimmed"
-                    >
-                        {(total / 1_000_000).toFixed(2)}MB
-                    </Text>
+                    {status !== "skipped" && (
+                        <Text
+                            size="xs"
+                            c="dimmed"
+                        >
+                            {(total / 1_000_000).toFixed(2)}MB
+                        </Text>
+                    )}
                 </Group>
 
                 <div>
@@ -61,17 +75,20 @@ export const LayerCard = memo(function LayerCardMemo({
                     >
                         {sha}
                     </Text>
-                    <Progress
-                        value={progress}
-                    />
+                    {status !== "skipped" && (
+                        <Progress
+                            value={progress}
+                        />
+                    )}
                 </div>
-
-                <Text
-                    c="dimmed"
-                    size="xs"
-                >
-                    {(received / 1_000_000).toFixed(2)}MB / {(total / 1_000_000).toFixed(2)}MB
-                </Text>
+                {status !== "skipped" && (
+                    <Text
+                        c="dimmed"
+                        size="xs"
+                    >
+                        {(received / 1_000_000).toFixed(2)}MB / {(total / 1_000_000).toFixed(2)}MB
+                    </Text>
+                )}
             </Stack>
             
         </Card>

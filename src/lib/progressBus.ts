@@ -13,12 +13,24 @@ export type LockEntry = {
     integrity?: string;
 };
 
+export type FileInfo = {
+    name: string;
+    tmpPath: string;
+}
+
+export type RepoTag = {
+    repository: string;
+    tag: string;
+}
+
 export type ProgressEvent =
     | { type: "stage"; stage: string }
-    | { type: "manifest-resolved"; items: Layer[]|LockEntry[] }
-    | { type: 'item-start'; index: number; digest: string; total?: number }
-    | { type: 'item-progress'; index: number; received: number; total?: number }
-    | { type: 'item-done'; index: number }
+    | { type: "repo-tag-resolved"; items: RepoTag[]} // docker imageのrepoとtagを解決したときに送るやつ
+    | { type: "manifest-resolved"; manifestName?: string; items: Layer[]|LockEntry[] }
+    | { type: 'item-start'; index: number; scope?: string; manifestName?: string; digest: string; total?: number }
+    | { type: 'item-progress'; index: number; scope?: string; manifestName?: string; received: number; total?: number }
+    | { type: 'item-done'; scope?: string; manifestName?: string; index: number }
+    | { type: 'item-skip'; scope?: string; manifestName?: string; index: number; reason: string;}
     | { type: 'tar-writing' }
     | { type: 'done'; filename: string }
     | { type: 'error'; message: string };

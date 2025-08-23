@@ -37,7 +37,8 @@ export const GET = async (req: NextRequest) => {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache, no-transform',
             'Connection': 'keep-alive',
-            'X-Accel-Buffering': 'no'
+            'X-Accel-Buffering': 'no',
+            'Content-Encoding': 'identity'
         },
     });
 }

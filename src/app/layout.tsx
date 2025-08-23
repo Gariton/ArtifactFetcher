@@ -1,75 +1,39 @@
-'use client';
-import { Text, AppShell, Container, MantineProvider, Flex, Center } from "@mantine/core";
+import { MantineProvider, ColorSchemeScript, mantineHtmlProps } from "@mantine/core";
 import { ReactNode } from "react";
-
-import "@mantine/core/styles.css";
-import { AppHeader } from "@/components/Header";
-import { useDisclosure } from "@mantine/hooks";
-import { AppNavbar } from "@/components/Navbar";
+import { DefalutLayout } from "@/components/Layout/default";
+import { theme } from "../../theme";
 
 export default function Layout({
     children
 }: Readonly<{
     children: ReactNode
 }>) {
-    const [opened, {toggle}] = useDisclosure(false);
-
     return (
         <html
-            lang="ja"
+            lang="en"
+            {...mantineHtmlProps}
         >
+            <head>
+                <ColorSchemeScript defaultColorScheme="auto"/>
+                <meta
+                    name="viewport"
+                    content="minimum-scale=1, initial-scale=1, width=device-width, user-scalable=no"
+                />
+                {process.env.NODE_ENV == "development" && (
+                    <script
+                      crossOrigin="anonymous"
+                        src="https://unpkg.com/react-scan/dist/auto.global.js"
+                    />
+                )}
+            </head>
             <body>
-                <MantineProvider>
-                    <AppShell
-                        header={{
-                            height: 60
-                        }}
-                        navbar={{
-                            width: 150,
-                            breakpoint: "xs",
-                            collapsed: {desktop: true, mobile: !opened}
-                        }}
-                    >
-                        <AppShell.Header>
-                            <Container
-                                size="md"
-                            >
-                                <AppHeader
-                                    navbarOpened={opened}
-                                    toggleNavbar={toggle}
-                                />
-                            </Container>
-                        </AppShell.Header>
-                        <AppShell.Navbar
-                            hiddenFrom="xs"
-                        >
-                            <AppNavbar />
-                        </AppShell.Navbar>
-                        <AppShell.Main>
-                            <Flex
-                                direction="column"
-                                gap="lg"
-                                mih="calc(100vh - 60px)"
-                            >
-                                <Container
-                                    size="md"
-                                    pt="md"
-                                    flex={1}
-                                >
-                                    {children}
-                                </Container>
-                                <Center
-                                    h={50}
-                                >
-                                    <Text
-                                        ta="center"
-                                    >
-                                        © 2025 Gariton_
-                                    </Text>
-                                </Center>
-                            </Flex>
-                        </AppShell.Main>
-                    </AppShell>
+                <MantineProvider
+                    theme={theme}
+                    defaultColorScheme="auto"
+                >
+                    <DefalutLayout>
+                        {children}
+                    </DefalutLayout>
                 </MantineProvider>
             </body>
         </html>

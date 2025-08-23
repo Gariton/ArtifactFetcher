@@ -1,7 +1,9 @@
-import { Group, Anchor, Title, ActionIcon, useMantineColorScheme, Burger } from "@mantine/core";
+'use client';
+import { Group, Anchor, ActionIcon, useMantineColorScheme, Burger, useComputedColorScheme } from "@mantine/core";
 import { IconBrandGithubFilled, IconMoon, IconSun } from "@tabler/icons-react";
 import classes from "./styles.module.css";
 import { AppTitle } from "../AppTitle";
+import { useColorScheme } from "@mantine/hooks";
 
 export const AppHeader = ({
     navbarOpened,
@@ -11,7 +13,7 @@ export const AppHeader = ({
     toggleNavbar: ()=>void;
 }) => {
 
-    const { toggleColorScheme, colorScheme } = useMantineColorScheme();
+    const { setColorScheme } = useMantineColorScheme();
 
     return (
         <Group
@@ -58,14 +60,20 @@ export const AppHeader = ({
                 <ActionIcon
                     variant="default"
                     color="gray"
-                    onClick={toggleColorScheme}
+                    onClick={()=>setColorScheme("light")}
                     radius="md"
+                    lightHidden
                 >
-                    {colorScheme == "dark" ? (
-                        <IconSun size="1rem"/>
-                    ) : (
-                        <IconMoon size="1rem"/>
-                    )}
+                    <IconSun size="1rem"/>
+                </ActionIcon>
+                <ActionIcon
+                    variant="default"
+                    color="gray"
+                    onClick={()=>setColorScheme("dark")}
+                    radius="md"
+                    darkHidden
+                >
+                    <IconMoon size="1rem"/>
                 </ActionIcon>
             </Group>
         </Group>

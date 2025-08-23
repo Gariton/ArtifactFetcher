@@ -32,6 +32,12 @@ const nextConfig: NextConfig = {
 
     return config;
   },
+  env: {
+    DOCKER_UPLOAD: process.env.DOCKER_UPLOAD?.toLocaleLowerCase() ?? "false",
+    DOCKER_UPLOAD_REGISTORY: process.env.DOCKER_UPLOAD_REGISTORY || "",
+    DOCKER_UPLOAD_USERNAME: process.env.DOCKER_UPLOAD_USERNAME || "",
+    DOCKER_UPLOAD_PASSWORD: process.env.DOCKER_UPLOAD_PASSWORD || ""
+  }
 };
 
 export default nextConfig;

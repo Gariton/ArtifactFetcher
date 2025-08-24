@@ -2,10 +2,16 @@
 import { Alert, Button, Space, Stack, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useDisclosure } from "@mantine/hooks";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { Layer } from "@/lib/progressBus";
 import { ProgressEvent } from "@/lib/progressBus";
 import { DownloadModal } from "@/components/Download/Modal";
+
+type FormType = {
+    repo: string;
+    tag: string;
+    platform: string;
+}
 
 export function DownloadPane() {
     const [loading, setLoading] = useState(false);
@@ -15,19 +21,35 @@ export function DownloadPane() {
     const [jobId, setJobId] = useState<string|null>(null);
     const [status, setStatus] = useState<string>("idle");
     const [layers, setLayers] = useState<Layer[]>([]);
-    const [perLayer, setPerLayer] = useState<Record<number, { received: number; total?: number; status: "process"|"done"|"skipped"; }>>({});
+    // Mutable store (no re-render on every chunk)
+    const perLayerRef = useRef<Record<number, { received: number; total?: number; status: "process"|"done"|"skipped" }>>({});
+    // Throttled snapshot for UI
+    const [perLayerSnap, setPerLayerSnap] = useState<Record<number, { received: number; total?: number; status: "process"|"done"|"skipped" }>>({});
+    // Throttle config (ms)
+    const FLUSH_INTERVAL = 250;
+    const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const scheduleFlush = useCallback(() => {
+        if (flushTimerRef.current) return;
+        flushTimerRef.current = setTimeout(() => {
+            flushTimerRef.current = null;
+            // create a shallow copy so React sees a new reference
+            setPerLayerSnap({ ...perLayerRef.current });
+        }, FLUSH_INTERVAL);
+    }, []);
     const esRef = useRef<EventSource | null>(null);
     
-    const reset = () => {
+    const reset = useCallback(() => {
         setJobId(null);
         setStatus("idle");
         setLayers([]);
-        setPerLayer({});
+        perLayerRef.current = {};
+        setPerLayerSnap({});
+        if (flushTimerRef.current) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null; }
         esRef.current?.close();
         esRef.current = null;
-    }
+    }, [])
     
-    const form = useForm({
+    const form = useForm<FormType>({
         mode: "uncontrolled",
         initialValues: {
             repo: "",
@@ -41,7 +63,7 @@ export function DownloadPane() {
         }
     })
     
-    const onSubmit = async (values: typeof form.values) => {
+    const onSubmit = useCallback(async (values: typeof form.values) => {
         setLoading(true);
         setError(null);
         reset();
@@ -69,8 +91,16 @@ export function DownloadPane() {
             es.onmessage = (ev) => {
                 const data = JSON.parse(ev.data) as ProgressEvent;
                 if (data.type === 'manifest-resolved') setLayers(data.items as Layer[]);
-                if (data.type === 'item-progress') setPerLayer((prev) => ({ ...prev, [data.index]: { received: data.received, total: data.total, status: "process" } }));
-                if (data.type === 'item-done') setPerLayer((prev) => ({ ...prev, [data.index]: { ...prev[data.index], status: "done" }}));
+                if (data.type === 'item-progress') {
+                    const prev = perLayerRef.current[data.index] || { received: 0, total: data.total, status: "process" as const };
+                    perLayerRef.current[data.index] = { received: data.received, total: data.total ?? prev.total, status: "process" };
+                    scheduleFlush();
+                }
+                if (data.type === 'item-done') {
+                    const prev = perLayerRef.current[data.index] || { received: 0, total: undefined, status: "process" as const };
+                    perLayerRef.current[data.index] = { ...prev, status: "done" };
+                    scheduleFlush();
+                }
                 if (data.type === 'stage') setStatus(data.stage);
                 if (data.type === 'error') {
                     setStatus('error'); es.close();
@@ -85,7 +115,14 @@ export function DownloadPane() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [open, reset, scheduleFlush, form]);
+
+    useEffect(() => {
+        return () => {
+            if (flushTimerRef.current) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null; }
+            esRef.current?.close();
+        };
+    }, []);
     
     return (
         <div>
@@ -164,7 +201,7 @@ export function DownloadPane() {
                 status={status}
                 jobId={jobId}
                 layers={layers}
-                perLayer={perLayer}
+                perLayer={perLayerSnap}
             />
         </div>
     );

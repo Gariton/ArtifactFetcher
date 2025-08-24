@@ -1,14 +1,15 @@
 'use client';
-import { Accordion, ActionIcon, Alert, Button, Card, Center, Checkbox, Flex, Group, Modal, PasswordInput, RingProgress, ScrollArea, Space, Stack, Text, TextInput } from "@mantine/core";
+import { Accordion, Alert, Button, Checkbox, Group, PasswordInput, Space, Stack, Text, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useDisclosure, useMap } from "@mantine/hooks";
-import { useRef, useState } from "react";
-import { IconCheck, IconCloudCog, IconCloudUpload, IconDownload, IconFileNeutral, IconStackFront, IconX } from "@tabler/icons-react";
-import { LayerCard } from "@/components/LayerCard";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { IconCloudCog, IconCloudUpload, IconDownload, IconX } from "@tabler/icons-react";
 import { Layer } from "@/lib/progressBus";
 import { ProgressEvent } from "@/lib/progressBus";
 import { Dropzone } from "@mantine/dropzone";
 import { nanoid } from "nanoid";
+import { FileItem } from "@/components/Upload/FileItem";
+import { UploadModal } from "@/components/Upload/Modal";
 
 type FormType = {
     files: File[];
@@ -27,14 +28,30 @@ export function UploadPane() {
     
     const [jobId, setJobId] = useState<string|null>(null);
     const manifests = useMap<string, Layer[]>();
-    const [perFile, setPerFile] = useState<Record<number, { received: number; total?: number; status: string; }>>({});
-    const perLayer = useMap<string, Record<number, {received: number; total?: number; status: "process"|"done"|"skipped";}>>();
+    
+    const perFileRef = useRef<Record<number, { received: number; total?: number; status: string; }>>({});
+    const perLayerRef = useRef<Map<string, Record<number, {received: number; total?: number; status: "process"|"done"|"skipped";}>>>(new Map());
+    const [perFileSnap, setPerFileSnap] = useState<typeof perFileRef.current>({});
+    const [perLayerSnap, setPerLayerSnap] = useState<typeof perLayerRef.current>(new Map());
+    const FLUSH_INTERVAL = 250;
+
+    const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const scheduleFlush = useCallback(() => {
+        if (flushTimerRef.current) return;
+        flushTimerRef.current = setTimeout(() => {
+            flushTimerRef.current = null;
+            setPerFileSnap({...perFileRef.current})
+            setPerLayerSnap(new Map(perLayerRef.current.entries()));
+        }, FLUSH_INTERVAL);
+    }, []);
+
     const esRef = useRef<EventSource | null>(null);
     
     const reset = () => {
         setJobId(null);
         manifests.clear();
-        perLayer.clear();
+        perLayerRef.current = new Map();
+        setPerLayerSnap(new Map());
         esRef.current?.close();
         esRef.current = null;
     }
@@ -62,11 +79,11 @@ export function UploadPane() {
         reset();
         try {
             if (values.files.length <= 0) {setError("Dockerイメージファイルを選択してください"); return;}
-            setPerFile(values.files.map(f => ({
+            perFileRef.current = values.files.map(f => ({
                 received: 0,
                 total: f.size,
                 status: "waiting"
-            })));
+            }));
             // フロントからSSEを張ってアップロード状況も関ししたい
             const jobId = nanoid();
             const es = new EventSource(`/api/build/progress?jobId=${jobId}`);
@@ -79,37 +96,38 @@ export function UploadPane() {
             }
             es.onmessage = (ev) => {
                 const data = JSON.parse(ev.data) as ProgressEvent;
+                scheduleFlush();
                 // upload files
                 if (data.type === "item-start" && data.scope == "upload") {
-                    setPerFile((prev) => ({
-                        ...prev,
+                    perFileRef.current = {
+                        ...perFileRef.current,
                         [data.index]: {
-                            ...prev[data.index],
+                            ...perFileRef.current[data.index],
                             received: 0,
                             total: data.total,
                             status: "processing"
                         }
-                    }));
+                    }
                 }
                 if (data.type === "item-progress" && data.scope == "upload") {
-                    setPerFile((prev) => ({
-                        ...prev,
+                    perFileRef.current = {
+                        ...perFileRef.current,
                         [data.index]: {
-                            ...prev[data.index],
+                             ...perFileRef.current[data.index],
                             received: data.received,
                             status: "processing"
                         }
-                    }));
+                    }
                 }
                 if (data.type === "item-done" && data.scope == "upload") {
-                    setPerFile((prev) => ({
-                        ...prev,
+                    perFileRef.current = {
+                        ...perFileRef.current,
                         [data.index]: {
-                            ...prev[data.index],
-                            received: prev[data.index]?.total ?? 0,
+                            ...perFileRef.current[data.index],
+                            received: perFileRef.current[data.index]?.total ?? 0,
                             status: "done"
                         }
-                    }))
+                    }
                 }
 
                 // push progress
@@ -117,13 +135,13 @@ export function UploadPane() {
                     open();
                     data.items.map(({repository, tag}) => {
                         manifests.set(`${repository}@${tag}`, []);
-                        perLayer.set(`${repository}@${tag}`, {});
+                        perLayerRef.current.set(`${repository}@${tag}`, {});
                     });
                 }
                 if (data.type === 'manifest-resolved') {
                     if (data.manifestName) {
                         manifests.set(data.manifestName, data.items as Layer[]);
-                        perLayer.set(data.manifestName, data.items.map(() => ({
+                        perLayerRef.current.set(data.manifestName, data.items.map(() => ({
                             received: 0,
                             total: 0,
                             status: "process"
@@ -132,26 +150,26 @@ export function UploadPane() {
                 }
                 if (data.type === 'item-start' && data.scope == "push-item") {
                     if (data.manifestName) {
-                        const record = perLayer.get(data.manifestName) ?? {};
-                        perLayer.set(data.manifestName, {...record, [data.index]: {received: 0, total: data.total, status: "process"}});
+                        const record = perLayerRef.current.get(data.manifestName) ?? {};
+                        perLayerRef.current.set(data.manifestName, {...record, [data.index]: {received: 0, total: data.total, status: "process"}});
                     }
                 }
                 if (data.type === 'item-progress' && data.scope == "push-item") {
                     if (data.manifestName) {
-                        const record = perLayer.get(data.manifestName) ?? {};
-                        perLayer.set(data.manifestName, {...record, [data.index]: {received: data.received, total: data.total, status: "process"}});
+                        const record = perLayerRef.current.get(data.manifestName) ?? {};
+                        perLayerRef.current.set(data.manifestName, {...record, [data.index]: {received: data.received, total: data.total, status: "process"}});
                     }
                 }
                 if (data.type === 'item-done' && data.scope == "push-item") {
                     if (data.manifestName) {
-                        const record = perLayer.get(data.manifestName) ?? {};
-                        perLayer.set(data.manifestName, {...record, [data.index]: {...record[data.index], status: "done"}});
+                        const record = perLayerRef.current.get(data.manifestName) ?? {};
+                        perLayerRef.current.set(data.manifestName, {...record, [data.index]: {...record[data.index], status: "done"}});
                     }
                 }
                 if (data.type === 'item-skip' && data.scope == 'push-item') {
                     if (data.manifestName) {
-                        const record = perLayer.get(data.manifestName) ?? {};
-                        perLayer.set(data.manifestName, {...record, [data.index]: {received: 100, total: 100, status: "skipped"}})
+                        const record = perLayerRef.current.get(data.manifestName) ?? {};
+                        perLayerRef.current.set(data.manifestName, {...record, [data.index]: {received: 100, total: 100, status: "skipped"}})
                     }
                 }
                 // if (data.type === 'stage') setStatus(data.stage);
@@ -193,6 +211,13 @@ export function UploadPane() {
             setError(e.message || "アップロードに失敗しました")
         }
     };
+
+    useEffect(() => {
+        return () => {
+            if (flushTimerRef.current) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null; }
+            esRef.current?.close();
+        };
+    }, []);
 
     return (
         <div>
@@ -296,64 +321,13 @@ export function UploadPane() {
                             選択済みファイル({form.getValues().files.length})
                         </Text>
                         {form.getValues().files.map((file, i) => (
-                            <Card
+                            <FileItem
                                 key={i}
-                                withBorder
-                                radius="lg"
-                                style={{cursor: "pointer"}}
-                                p="xs"
-                            >
-                                <Flex gap="sm" align="center">
-                                    <RingProgress
-                                        sections={[
-                                            {
-                                                value: perFile[i]?.status == "done" ? 100 : Math.floor(((perFile[i]?.received ?? 0) / file.size) * 100),
-                                                color: "green"
-                                            }
-                                        ]}
-                                        label={
-                                            <Center>
-                                                {perFile[i]?.status == "done" && (
-                                                    <IconCheck
-                                                        size="1.3em"
-                                                        stroke={3}    
-                                                    />
-                                                )}
-                                                {perFile[i]?.status == "processing" && (
-                                                    <Text
-                                                        size="xs"
-                                                    >
-                                                        {Math.floor(((perFile[i]?.received ?? 0) / file.size) * 100)}%
-                                                    </Text>
-                                                )}  
-                                                {(perFile[i]?.status == undefined || perFile[i]?.status == "waiting") && (
-                                                    <IconFileNeutral
-                                                        size="1.3em"
-                                                    />
-                                                )}
-                                            </Center>
-                                        }
-                                        size={50}
-                                        thickness={3}
-                                    />
-                                    <div
-                                        style={{flex: 1}}
-                                    >
-                                        <Text size="sm">{file.name}</Text>
-                                        <Text size="xs" c="dimmed">{(file.size / 1_000_000).toFixed(2)}MB</Text>
-                                    </div>
-                                    <ActionIcon
-                                        variant="transparent"
-                                        c={loading ? "dimmed" : "red"}
-                                        onClick={()=>{
-                                            form.setFieldValue("files", (prev) => prev.filter(n=>n.name!==file.name));
-                                        }}
-                                        disabled={loading}
-                                    >
-                                        <IconX size="1.3em"/>
-                                    </ActionIcon>
-                                </Flex>
-                            </Card>
+                                file={file}
+                                percent={perFileSnap[i]?.status == "done" ? 100 : Math.floor(((perFileSnap[i]?.received ?? 0) / file.size) * 100)}
+                                status={perFileSnap[i]?.status}
+                                onDelete={()=>form.setFieldValue("files", (prev) => prev.filter(n=>n.name!==file.name))}
+                            />
                         ))}
                     </Stack>
                     <Space h="lg" />
@@ -412,144 +386,16 @@ export function UploadPane() {
                 {error}
             </Alert>}
             
-            <Modal
+            <UploadModal
                 opened={opened}
                 onClose={()=>{
                     close();
                     reset();
                 }}
-                centered
-                radius="lg"
-                size="lg"
-                transitionProps={{transition: "pop"}}
-                withCloseButton={false}
-                styles={{body: {height: '100%'}}}
-            >
-                <Flex
-                    h="100%"
-                    direction="column"
-                    gap="sm"
-                >
-                    <Group
-                        justify="space-between"
-                    >
-                        <Group
-                            gap="xs"
-                        >
-                            <IconStackFront />
-                            <Text
-                                fw="bold"
-                                size="lg"
-                            >
-                                アップロード進捗
-                            </Text>
-                        </Group>
-                        <Text
-                            size="xs"
-                        >
-                            {jobId}
-                        </Text>
-                    </Group>
-
-                    <ScrollArea
-                        h={600}
-                    >
-                        <Accordion
-                            radius="md"
-                        >
-                            {Array.from(manifests.entries()).map(([manifestName]) => {
-                                const manifestLayers = manifests.get(manifestName);
-                                if (!manifestLayers) return;
-                                const totalLayers = manifestLayers.length;
-                                const myManifest = perLayer.get(manifestName!)
-                                const doneLayers = Array.from(Object.values(myManifest!).values().filter(l=>l.status=="done"||l.status=="skipped")).length;
-                                const manifestPct = totalLayers > 0 ? Math.floor((doneLayers / totalLayers) * 100) : 0;
-
-                                return (
-                                    <Accordion.Item
-                                        key={manifestName}
-                                        value={manifestName}
-                                    >
-                                        <Accordion.Control>
-                                            <Flex
-                                                gap="sm"
-                                                align="center"
-                                            >
-                                                <RingProgress
-                                                    sections={[{
-                                                        value: manifestPct,
-                                                        color: "green"
-                                                    }]}
-                                                    size={50}
-                                                    thickness={5}
-                                                    label={manifestPct >= 100 ? (
-                                                        <Center>
-                                                            <IconCheck
-                                                                size="1.3em"
-                                                                stroke={3}
-                                                            />
-                                                        </Center>
-                                                    ) : (
-                                                        <Text
-                                                            size="xs"
-                                                            ta="center"
-                                                        >
-                                                            {manifestPct}%
-                                                        </Text>
-                                                    )}
-                                                />
-                                                <div>
-                                                <Text>
-                                                    {manifestName}
-                                                </Text>
-                                                <Text
-                                                    size="sm"
-                                                    c="dimmed"
-                                                >
-                                                    {manifestLayers.length} Layers
-                                                </Text>
-                                            </div>
-                                            </Flex>
-                                        </Accordion.Control>
-                                        <Accordion.Panel>
-                                            <ScrollArea
-                                                h={500}
-                                            >
-                                                <Stack>
-                                                    {manifestLayers.map((layer, j) => {
-                                                        const info = (perLayer.get(manifestName) ?? {})[j];
-                                                        const pct = info?.total ? Math.floor((info.received / info.total) * 100) : undefined;
-                                                        return (
-                                                            <LayerCard
-                                                                key={j}
-                                                                number={j}
-                                                                progress={pct || 0}
-                                                                sha={layer.digest}
-                                                                total={info?.total || 0}
-                                                                received={info?.received || 0}
-                                                                status={info?.status || "process"}
-                                                            />
-                                                        )
-                                                    })}
-                                                </Stack>
-                                            </ScrollArea>
-                                        </Accordion.Panel>
-                                    </Accordion.Item>
-                                )
-                            })}
-                        </Accordion>
-                    </ScrollArea>
-                    <Button
-                        color="dark"
-                        radius="md"
-                        size="md"
-                        fullWidth
-                        onClick={close}
-                    >
-                        とじる
-                    </Button>
-                </Flex>
-            </Modal>
+                jobId={jobId}
+                manifests={manifests}
+                perLayer={perLayerSnap}
+            />
         </div>
     );
 }

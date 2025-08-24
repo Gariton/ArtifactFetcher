@@ -5,6 +5,8 @@ import { pipeline } from 'node:stream/promises';
 import axios, { AxiosRequestConfig } from 'axios';
 import * as tar from 'tar';
 import { ProgressBus } from '@/lib/progressBus';
+import { Agent as HttpsAgent } from 'https';
+import os from 'node:os';
 
 export type PushOptions = {
     registry: string;           // e.g. https://nexus.example.com
@@ -24,18 +26,17 @@ const MEDIA = {
     LAYER: 'application/vnd.docker.image.rootfs.diff.tar',
 };
 
-function authHeader(username?: string, password?: string) {
-    if (!username) return {};
-    const token = Buffer.from(`${username}:${password || ''}`).toString('base64');
-    return { Authorization: `Basic ${token}` };
+function authHeader(username?: string, password?: string): Record<string, string> {
+  if (!username) return {} as Record<string, string>;
+  const token = Buffer.from(`${username}:${password || ''}`).toString('base64');
+  return { Authorization: `Basic ${token}` };
 }
 
 function axiosClient(baseURL: string, insecureTLS?: boolean, extraHeaders?: Record<string,string>) {
     return axios.create({
         baseURL,
         timeout: 60_000,
-        // @ts-expect-error - node only option
-        httpsAgent: insecureTLS ? new (require('https').Agent)({ rejectUnauthorized: false }) : undefined,
+        httpsAgent: insecureTLS ? new HttpsAgent({ rejectUnauthorized: false }) : undefined,
         headers: { ...(extraHeaders || {}) },
         maxContentLength: Infinity,
         maxBodyLength: Infinity,
@@ -44,7 +45,7 @@ function axiosClient(baseURL: string, insecureTLS?: boolean, extraHeaders?: Reco
 }
 
 async function ensureDirFromTar(tarPath: string): Promise<string> {
-    const temp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'push-'));
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'push-'));
     await tar.x({ file: tarPath, cwd: temp, sync: true });
     return temp;
 }

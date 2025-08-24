@@ -1,9 +1,8 @@
 'use client';
-import { Group, Anchor, ActionIcon, useMantineColorScheme, Burger, useComputedColorScheme } from "@mantine/core";
+import { Group, Anchor, ActionIcon, useMantineColorScheme, Burger } from "@mantine/core";
 import { IconBrandGithubFilled, IconMoon, IconSun } from "@tabler/icons-react";
 import classes from "./styles.module.css";
 import { AppTitle } from "../AppTitle";
-import { useColorScheme } from "@mantine/hooks";
 
 export const AppHeader = ({
     navbarOpened,

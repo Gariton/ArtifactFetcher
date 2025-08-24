@@ -21,7 +21,8 @@ export default function Layout({
                 />
                 {process.env.NODE_ENV == "development" && (
                     <script
-                      crossOrigin="anonymous"
+                        async
+                        crossOrigin="anonymous"
                         src="https://unpkg.com/react-scan/dist/auto.global.js"
                     />
                 )}

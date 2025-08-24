@@ -268,6 +268,7 @@ export default function Npm () {
                                     <LayerCard
                                         key={i}
                                         number={i}
+                                        status={(pct||0) >= 100 ? "done" : "process"}
                                         progress={pct || 0}
                                         sha={pkg.name}
                                         total={info?.total || 0}

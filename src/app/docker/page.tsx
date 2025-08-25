@@ -3,8 +3,29 @@ import { Group, Space, Tabs, Text, ThemeIcon, Title } from "@mantine/core";
 import { IconBrandDocker, IconDownload, IconUpload } from "@tabler/icons-react";
 import { DownloadPane } from "./download";
 import { UploadPane } from "./upload";
+import { getEnvironmentVar } from "@/components/actions";
+import { useEffect, useState } from "react";
+
+type EnvType = {
+    DOCKER_UPLOAD: string;
+    DOCKER_UPLOAD_REGISTORY: string;
+    DOCKER_UPLOAD_USERNAME: string;
+    DOCKER_UPLOAD_PASSWORD: string;
+}
 
 export default function Docker() {
+
+    const [env, setEnv] = useState<EnvType>({
+        DOCKER_UPLOAD: "yes",
+        DOCKER_UPLOAD_REGISTORY: "",
+        DOCKER_UPLOAD_USERNAME: "",
+        DOCKER_UPLOAD_PASSWORD: "",
+    });
+
+    useEffect(() => {
+        getEnvironmentVar().then(setEnv);
+    }, [])
+
     return (
         <div>
             <Group
@@ -46,7 +67,7 @@ export default function Docker() {
                     <Tabs.Tab
                         value="upload"
                         leftSection={<IconUpload size="1em"/>}
-                        disabled={process.env.DOCKER_UPLOAD==="false"}
+                        disabled={!/^(1|true|on|yes)$/i.test(env.DOCKER_UPLOAD || '')}
                     >
                         アップロード
                     </Tabs.Tab>
@@ -56,7 +77,7 @@ export default function Docker() {
                 >
                     <DownloadPane />
                 </Tabs.Panel>
-                {process.env.DOCKER_UPLOAD==="true" && (
+                {/^(1|true|on|yes)$/i.test(env.DOCKER_UPLOAD || '') && (
                     <Tabs.Panel
                         value="upload"
                     >

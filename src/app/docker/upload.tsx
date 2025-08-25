@@ -10,6 +10,7 @@ import { Dropzone } from "@mantine/dropzone";
 import { nanoid } from "nanoid";
 import { FileItem } from "@/components/Upload/FileItem";
 import { UploadModal } from "@/components/Upload/Modal";
+import { getEnvironmentVar } from "@/components/actions";
 
 type FormType = {
     files: File[];
@@ -19,6 +20,13 @@ type FormType = {
     tag: string;
     username: string;
     password: string;
+}
+
+type EnvType = {
+    DOCKER_UPLOAD: string;
+    DOCKER_UPLOAD_REGISTORY: string;
+    DOCKER_UPLOAD_USERNAME: string;
+    DOCKER_UPLOAD_PASSWORD: string;
 }
 
 export function UploadPane() {
@@ -44,8 +52,13 @@ export function UploadPane() {
             setPerLayerSnap(new Map(perLayerRef.current.entries()));
         }, FLUSH_INTERVAL);
     }, []);
-
     const esRef = useRef<EventSource | null>(null);
+    const [env, setEnv] = useState<EnvType>({
+        DOCKER_UPLOAD: "yes",
+        DOCKER_UPLOAD_REGISTORY: "",
+        DOCKER_UPLOAD_USERNAME: "",
+        DOCKER_UPLOAD_PASSWORD: "",
+    });
     
     const reset = () => {
         setJobId(null);
@@ -60,11 +73,11 @@ export function UploadPane() {
         initialValues: {
             files: [],
             useManifest: true,
-            registry: process.env.DOCKER_UPLOAD_REGISTORY || '',
+            registry: env.DOCKER_UPLOAD_REGISTORY || '',
             repo: "",
             tag: "",
-            username: process.env.DOCKER_UPLOAD_USERNAME || '',
-            password: process.env.DOCKER_UPLOAD_PASSWORD || ''
+            username: env.DOCKER_UPLOAD_USERNAME || '',
+            password: env.DOCKER_UPLOAD_PASSWORD || ''
         },
         validate: {
             registry: (v) => v=="" ? "レジストリを指定してください" : null,
@@ -213,6 +226,12 @@ export function UploadPane() {
     };
 
     useEffect(() => {
+        getEnvironmentVar().then(v => {
+            setEnv(v)
+            form.setFieldValue("registry", v.DOCKER_UPLOAD_REGISTORY);
+            form.setFieldValue("username", v.DOCKER_UPLOAD_USERNAME);
+            form.setFieldValue("password", v.DOCKER_UPLOAD_PASSWORD);
+        });
         return () => {
             if (flushTimerRef.current) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null; }
             esRef.current?.close();

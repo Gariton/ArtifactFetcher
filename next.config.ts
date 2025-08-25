@@ -1,16 +1,13 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  experimental: {
-    // これで RSC/SSR のサーババンドルから丸ごと外出し
-    serverComponentsExternalPackages: [
-      '@npmcli/arborist',
-      'pacote',
-      'npm-package-arg',
-      'ssri',
-      'minipass', // pacote系がよく使う
-    ],
-  },
+  serverExternalPackages: [
+    '@npmcli/arborist',
+    'pacote',
+    'npm-package-arg',
+    'ssri',
+    'minipass', // pacote系がよく使う
+  ],
   webpack(config, { isServer }) {
     if (isServer) {
       // externals は array とは限らないため安全に配列化してから push
@@ -32,12 +29,7 @@ const nextConfig: NextConfig = {
 
     return config;
   },
-  env: {
-    DOCKER_UPLOAD: process.env.DOCKER_UPLOAD?.toLocaleLowerCase() ?? "false",
-    DOCKER_UPLOAD_REGISTORY: process.env.DOCKER_UPLOAD_REGISTORY || "",
-    DOCKER_UPLOAD_USERNAME: process.env.DOCKER_UPLOAD_USERNAME || "",
-    DOCKER_UPLOAD_PASSWORD: process.env.DOCKER_UPLOAD_PASSWORD || ""
-  }
+  output: "standalone"
 };
 
 export default nextConfig;

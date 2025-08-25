@@ -1,0 +1,14 @@
+node_modules
+.next/cache
+*.log
+npm-debug.log*
+.DS_Store
+.git
+.github
+.vscode
+downloads
+tmp
+coverage
+.env
+compose.yaml
+production.yaml

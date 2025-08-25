@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
       }
     });
 
-    file.on('close', () => { try { fs.rmSync(job.tarPath!, { force: true }); } catch {} });
+    // file.on('close', () => { try { fs.rmSync(job.tarPath!, { force: true }); } catch {} });
 
     return new Response(web as unknown as BodyInit, {
         headers: {

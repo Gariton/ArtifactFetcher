@@ -117,6 +117,14 @@ export function DownloadPane() {
         }
     }, [open, reset, scheduleFlush, form]);
 
+    const deleteFile = useCallback(async () => {
+        try {
+            const res = await fetch(`/api/build/delete?jobId=${jobId}`, {method: "POST"});
+        } catch {
+            console.error("ファイル削除失敗");
+        }
+    }, [jobId]);
+
     useEffect(() => {
         return () => {
             if (flushTimerRef.current) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null; }
@@ -193,6 +201,7 @@ export function DownloadPane() {
             <DownloadModal
                 opened={opened}
                 onClose={()=>{
+                    deleteFile();
                     close();
                     reset();
                 }}

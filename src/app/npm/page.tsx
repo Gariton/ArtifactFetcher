@@ -6,7 +6,7 @@ import { Alert, Button, Group, Modal, Progress, Space, Stack, Text, TextInput, T
 import { useForm } from "@mantine/form";
 import { useDisclosure } from "@mantine/hooks";
 import { IconBrandNpm, IconCircleCheck, IconDownload, IconStackFront } from "@tabler/icons-react";
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ProgressEvent } from "@/lib/progressBus";
 
 export default function Npm () {
@@ -82,6 +82,14 @@ export default function Npm () {
             setLoading(false);
         }
     }
+
+    const deleteFile = useCallback(async () => {
+        try {
+            const res = await fetch(`/api/build/delete?jobId=${jobId}`, {method: "POST"});
+        } catch {
+            console.error("ファイル削除失敗");
+        }
+    }, [jobId]);
 
     const totals = Object.values(perPackage).reduce(
         (acc, v) => {
@@ -164,6 +172,7 @@ export default function Npm () {
             <Modal
                 opened={opened}
                 onClose={()=>{
+                    deleteFile();
                     close();
                     reset();
                 }}

@@ -19,7 +19,6 @@ export const UploadModal = memo(function UploadModalMemo ({
     manifests,
     perLayer,
 }: UploadModalType) {
-    console.log(perLayer);
     return (
         <Modal
             opened={opened}

@@ -206,7 +206,6 @@ export async function pushImageToRegistry(opts: PushOptions) {
     await pushBlob(c, repository, tag, configDigest, configPath, bus, -1, authHeader(username, password));
     
     // upload layers
-    console.log('emit manifest-resolved', `${opts.repository}@${opts.tag}`);
     bus.emitEvent({ type: 'manifest-resolved', items: layers, manifestName: `${opts.repository}@${opts.tag}` } as any);
     for (let i = 0; i < layerFiles.length; i++) {
         bus.emitEvent({ type: 'stage', stage: `upload-layer-${i}` });

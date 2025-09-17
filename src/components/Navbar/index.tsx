@@ -18,6 +18,12 @@ export const AppNavbar = () => {
             >
                 npm
             </Anchor>
+            <Anchor
+                className={classes.link}
+                href="/admin"
+            >
+                管理
+            </Anchor>
         </Stack>
     );
 }

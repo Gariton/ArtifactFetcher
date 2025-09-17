@@ -95,6 +95,12 @@ docker buildx build \
 | `PORT` | `3000` | Web サーバ待受ポート |
 | `DOCKER_UPLOAD` | `false` | `true/1/on/yes` で **Docker push 機能を有効化**（API 側でガード） |
 | `NODE_TLS_REJECT_UNAUTHORIZED` | | 自己署名のレジストリ等へ接続する場合は `0` に |
+| `S3_ACCESS_KEY_ID` |  | S3 アクセスキー（MinIO の Access Key） |
+| `S3_SECRET_ACCESS_KEY` |  | S3 シークレットキー（MinIO の Secret Key） |
+| `S3_ENDPOINT` |  | MinIO など S3 互換ストレージのエンドポイント URL（例: `http://minio:9000`） |
+| `S3_BUCKET` |  | npm などで生成したアーカイブを保存するバケット名 |
+| `S3_REGION` | `us-east-1` | S3 クライアントに渡すリージョン（MinIO でも必須） |
+| `S3_FORCE_PATH_STYLE` | `true` | パススタイルアクセスを強制するか（MinIO は `true` 推奨） |
 
 `.env.production` 例：
 ```dotenv
@@ -118,6 +124,7 @@ services:
 2. **Start** でジョブ開始 → SSE で進捗が流れます  
 3. 完了後、ブラウザが自動で `.tar` をダウンロード  
 4. （オプション）Docker tar を **任意 Registry に push**（UI から複数ファイル一括アップロード可）  
+5. `/admin` からアクセスできる管理ページで、リクエストの履歴（時刻・IP・エンドポイント）を確認可能  
 
 ### CLI
 Web サーバに対して CLI からダウンロードを発火できます。
@@ -153,6 +160,7 @@ npm run download -- npm next ^18 --host https://downloader.example.com --out dow
 ### Docker イメージのダウンロード（tar）
 - Docker Hub の **token 取得 → manifest 解決（platform 対応）→ 各 layer/config を検証付きでダウンロード**  
 - `manifest.json` を `docker load` 形式に整形し、`.tar` を生成  
+- 生成した `.tar` は S3 (MinIO) にアップロードし、クライアントからは S3 経由でストリーミングダウンロード  
 - 進捗は **layer ごと**にバイト数で SSE 送出  
 
 #### API（サーバ内）

@@ -10,6 +10,8 @@
         "download": "node scripts/index.mjs"
     },
     "dependencies": {
+        "@aws-sdk/client-s3": "^3.890.0",
+        "@aws-sdk/lib-storage": "^3.890.0",
         "@mantine/core": "8.2.7",
         "@mantine/dropzone": "8.2.7",
         "@mantine/form": "8.2.7",

@@ -94,7 +94,7 @@ export async function buildDockerImageTar({
     tag: string;
     platform?: string;
     bus: ProgressBus
-}): Promise<{ tarPath: string; filename: string }> {
+}): Promise<{ tarPath: string; filename: string; workRoot: string }> {
     bus.emitEvent({ type: 'stage', stage: 'auth' });
     const token = await fetchToken(repository);
     const manifest: any = await resolvePlatformManifest(repository, tag, platform, token, bus);
@@ -142,5 +142,5 @@ export async function buildDockerImageTar({
 
     bus.emitEvent({ type: 'done', filename });
     console.log("完了");
-    return { tarPath, filename };
+    return { tarPath, filename, workRoot };
 }

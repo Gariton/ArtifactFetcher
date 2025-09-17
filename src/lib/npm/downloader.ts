@@ -74,5 +74,5 @@ export async function buildTarFromLock({
     await tar.c({ file: tarPath, cwd: dir, sync: true }, ['.']);
     bus.emitEvent({ type: 'done', filename: `${bundleName}.tar` });
     
-    return { tarPath, filename: `${bundleName}.tar` };
+    return { tarPath, filename: `${bundleName}.tar`, workRoot };
 }

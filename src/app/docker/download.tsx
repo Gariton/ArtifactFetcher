@@ -117,13 +117,19 @@ export function DownloadPane() {
         }
     }, [open, reset, scheduleFlush, form]);
 
-    const deleteFile = useCallback(async () => {
-        try {
-            const res = await fetch(`/api/build/delete?jobId=${jobId}`, {method: "POST"});
-        } catch {
-            console.error("ファイル削除失敗");
-        }
-    }, [jobId]);
+    const handleModalClose = useCallback(() => {
+        const currentJobId = jobId;
+        close();
+        reset();
+        if (!currentJobId) return;
+        (async () => {
+            try {
+                await fetch(`/api/build/delete?jobId=${currentJobId}`, { method: "POST" });
+            } catch (err) {
+                console.error("ファイル削除失敗", err);
+            }
+        })();
+    }, [jobId, close, reset]);
 
     useEffect(() => {
         return () => {
@@ -200,11 +206,7 @@ export function DownloadPane() {
 
             <DownloadModal
                 opened={opened}
-                onClose={()=>{
-                    deleteFile();
-                    close();
-                    reset();
-                }}
+                onClose={() => handleModalClose()}
                 repo={form.getValues().repo}
                 tag={form.getValues().tag}
                 status={status}

@@ -2,7 +2,7 @@
 
 import { LayerCard } from "@/components/LayerCard";
 import { LockEntry } from "@/lib/progressBus";
-import { Alert, Button, Group, Modal, Progress, Space, Stack, Text, TextInput, ThemeIcon, Title, ScrollArea, Center, Loader, Badge, Textarea } from "@mantine/core";
+import { Alert, Button, Group, Modal, Progress, Space, Stack, Text, ThemeIcon, Title, ScrollArea, Center, Loader, Badge, Textarea } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useDisclosure } from "@mantine/hooks";
 import { IconBrandNpm, IconCircleCheck, IconDownload, IconStackFront } from "@tabler/icons-react";
@@ -83,13 +83,19 @@ export default function Npm () {
         }
     }
 
-    const deleteFile = useCallback(async () => {
-        try {
-            const res = await fetch(`/api/build/delete?jobId=${jobId}`, {method: "POST"});
-        } catch {
-            console.error("ファイル削除失敗");
-        }
-    }, [jobId]);
+    const handleModalClose = useCallback(() => {
+        const currentJobId = jobId;
+        close();
+        reset();
+        if (!currentJobId) return;
+        (async () => {
+            try {
+                await fetch(`/api/build/delete?jobId=${currentJobId}`, { method: "POST" });
+            } catch (err) {
+                console.error("ファイル削除失敗", err);
+            }
+        })();
+    }, [jobId, close, reset]);
 
     const totals = Object.values(perPackage).reduce(
         (acc, v) => {
@@ -161,6 +167,17 @@ export default function Npm () {
                 </Stack>
             </form>
 
+            {jobId && !opened && status !== "idle" && (
+                <Button
+                    mt="md"
+                    variant="light"
+                    radius="lg"
+                    onClick={open}
+                >
+                    進捗を再表示
+                </Button>
+            )}
+
             {error && <Alert
                 color="red"
                 radius="lg"
@@ -173,16 +190,12 @@ export default function Npm () {
 
             <Modal
                 opened={opened}
-                onClose={()=>{
-                    deleteFile();
-                    close();
-                    reset();
-                }}
+                onClose={() => handleModalClose()}
                 centered
                 radius="lg"
                 size="lg"
                 transitionProps={{transition: 'pop'}}
-                withCloseButton={false}
+                withCloseButton
             >
                 <Group
                     justify="space-between"
@@ -303,6 +316,15 @@ export default function Npm () {
                     target="_blank"
                 >
                     ダウンロード
+                </Button>
+                <Button
+                    variant="outline"
+                    fullWidth
+                    radius="lg"
+                    mt="sm"
+                    onClick={() => handleModalClose()}
+                >
+                    閉じる
                 </Button>
             </Modal>
         </div>

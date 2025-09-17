@@ -38,7 +38,7 @@ export const DownloadModal = memo(function DownloadModalMemo({
             radius="lg"
             size="lg"
             transitionProps={{transition: "pop"}}
-            withCloseButton={false}
+            withCloseButton
         >
             <Group
                 justify="space-between"
@@ -159,6 +159,15 @@ export const DownloadModal = memo(function DownloadModalMemo({
                 target="_blank"
             >
                 ダウンロード
+            </Button>
+            <Button
+                variant="outline"
+                fullWidth
+                radius="lg"
+                mt="sm"
+                onClick={() => props.onClose?.()}
+            >
+                閉じる
             </Button>
         </Modal>
     );

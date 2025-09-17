@@ -2,6 +2,7 @@ export type JobStatus = 'queued' | 'running' | 'done' | 'error';
 export type JobRecord = {
     status: JobStatus;
     filename?: string;
+    objectKey?: string;
     tarPath?: string;
     error?: string;
 }

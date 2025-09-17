@@ -2,7 +2,7 @@
 
 import { LayerCard } from "@/components/LayerCard";
 import { LockEntry } from "@/lib/progressBus";
-import { Alert, Button, Group, Modal, Progress, Space, Stack, Text, TextInput, ThemeIcon, Title, ScrollArea, Center, Loader, Badge } from "@mantine/core";
+import { Alert, Button, Group, Modal, Progress, Space, Stack, Text, TextInput, ThemeIcon, Title, ScrollArea, Center, Loader, Badge, Textarea } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useDisclosure } from "@mantine/hooks";
 import { IconBrandNpm, IconCircleCheck, IconDownload, IconStackFront } from "@tabler/icons-react";
@@ -43,7 +43,7 @@ export default function Npm () {
         setStatus("starting");
         open();
         try {
-            const specs = values.packages.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+            const specs = values.packages.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
             const res = await fetch('/api/npm/start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -137,15 +137,17 @@ export default function Npm () {
                 onSubmit={form.onSubmit(onSubmit)}
             >
                 <Stack>
-                    <TextInput
+                    <Textarea
                         label="パッケージ名"
-                        description="ダウンロードしたいパッケージ名をスペース区切りで入力"
+                        description="ダウンロードしたいパッケージ名をスペースまたは改行で区切って入力"
                         size="lg"
                         radius="lg"
                         placeholder="react@^18 axios"
                         key={form.key("packages")}
                         {...form.getInputProps("packages")}
                         disabled={loading}
+                        minRows={5}
+                        autosize
                     />
                     <Space h="md" />
                     <Button

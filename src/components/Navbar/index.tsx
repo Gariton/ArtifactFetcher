@@ -20,6 +20,12 @@ export const AppNavbar = () => {
             </Anchor>
             <Anchor
                 className={classes.link}
+                href="/pip"
+            >
+                pip
+            </Anchor>
+            <Anchor
+                className={classes.link}
                 href="/admin"
             >
                 管理

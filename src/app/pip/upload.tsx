@@ -1,38 +1,53 @@
 'use client';
 
-import { Accordion, Alert, Button, Group, PasswordInput, Space, Stack, Text, TextInput } from '@mantine/core';
+import { PackageUploadModal } from '@/components/PackageUpload/Modal';
+import { ProgressEvent } from '@/lib/progressBus';
+import { Alert, Button, Checkbox, Group, PasswordInput, Space, Stack, Text, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { Dropzone } from '@mantine/dropzone';
 import { IconCloudCog, IconCloudUpload, IconDownload, IconX } from '@tabler/icons-react';
 import { nanoid } from 'nanoid';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ProgressEvent } from '@/lib/progressBus';
 import { FileItem } from '@/components/Upload/FileItem';
-import { PackageUploadModal } from '@/components/PackageUpload/Modal';
-import { getEnvironmentVar } from '@/components/actions';
 
-const FLUSH_INTERVAL = 250;
+type Status = 'idle' | 'running' | 'done' | 'error';
+
+type PerFileState = {
+    received: number;
+    total?: number;
+    status: string;
+};
+
+type EnvProps = {
+    PIP_UPLOAD: string;
+    PIP_UPLOAD_REGISTRY: string;
+    PIP_UPLOAD_USERNAME: string;
+    PIP_UPLOAD_PASSWORD: string;
+    PIP_UPLOAD_TOKEN: string;
+    PIP_UPLOAD_SKIP_EXISTING: string;
+};
 
 type FormValues = {
     files: File[];
-    registryUrl: string;
-    authToken: string;
+    repositoryUrl: string;
     username: string;
     password: string;
+    token: string;
+    skipExisting: boolean;
 };
 
-type FileProgressState = { received: number; total?: number; status: string };
+const FLUSH_INTERVAL = 250;
 
-export function UploadPane() {
+export function UploadPane({ env }: { env: EnvProps }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [jobId, setJobId] = useState<string | null>(null);
-    const [status, setStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+    const [status, setStatus] = useState<Status>('idle');
     const [opened, { open, close }] = useDisclosure(false);
 
-    const perFileRef = useRef<Record<number, FileProgressState>>({});
-    const [perFileSnap, setPerFileSnap] = useState<Record<number, FileProgressState>>({});
+    const perFileRef = useRef<Record<number, PerFileState>>({});
+    const [perFileSnap, setPerFileSnap] = useState<Record<number, PerFileState>>({});
     const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
     const esRef = useRef<EventSource | null>(null);
 
@@ -61,48 +76,49 @@ export function UploadPane() {
         mode: 'uncontrolled',
         initialValues: {
             files: [],
-            registryUrl: '',
-            authToken: '',
-            username: '',
-            password: '',
+            repositoryUrl: env.PIP_UPLOAD_REGISTRY || '',
+            username: env.PIP_UPLOAD_USERNAME || '',
+            password: env.PIP_UPLOAD_PASSWORD || '',
+            token: env.PIP_UPLOAD_TOKEN || '',
+            skipExisting: /^(1|true|on|yes)$/i.test(env.PIP_UPLOAD_SKIP_EXISTING || ''),
         },
         validate: {
-            registryUrl: (v) => (v.trim() === '' ? 'レジストリURLを入力してください' : null),
+            repositoryUrl: (value) => (value.trim() === '' ? 'レジストリURLを入力してください' : null),
         },
     });
 
-    const handleSseEvent = useCallback((data: ProgressEvent) => {
+    const handleEvent = useCallback((data: ProgressEvent) => {
         if (data.type === 'stage') {
             setStatus('running');
             return;
         }
-        if (data.type === 'item-start' && data.scope === 'npm-upload') {
+        if (data.type === 'item-start' && data.scope === 'pip-upload') {
             perFileRef.current = {
                 ...perFileRef.current,
                 [data.index]: {
                     ...perFileRef.current[data.index],
                     status: 'uploading',
                     received: perFileRef.current[data.index]?.received ?? 0,
-                    total: perFileRef.current[data.index]?.total
-                }
+                    total: data.total ?? perFileRef.current[data.index]?.total,
+                },
             };
             scheduleFlush();
             return;
         }
-        if (data.type === 'item-progress' && data.scope === 'npm-upload') {
+        if (data.type === 'item-progress' && data.scope === 'pip-upload') {
             perFileRef.current = {
                 ...perFileRef.current,
                 [data.index]: {
                     ...perFileRef.current[data.index],
                     status: 'uploading',
                     received: data.received,
-                    total: perFileRef.current[data.index]?.total
-                }
+                    total: data.total ?? perFileRef.current[data.index]?.total,
+                },
             };
             scheduleFlush();
             return;
         }
-        if (data.type === 'item-done' && data.scope === 'npm-upload') {
+        if (data.type === 'item-done' && data.scope === 'pip-upload') {
             const prev = perFileRef.current[data.index];
             perFileRef.current = {
                 ...perFileRef.current,
@@ -110,23 +126,23 @@ export function UploadPane() {
                     ...prev,
                     status: 'uploaded',
                     received: prev?.total ?? prev?.received ?? 0,
-                }
+                },
             };
             scheduleFlush();
             return;
         }
-        if (data.type === 'item-start' && data.scope === 'npm-publish') {
+        if (data.type === 'item-start' && data.scope === 'pip-publish') {
             perFileRef.current = {
                 ...perFileRef.current,
                 [data.index]: {
                     ...perFileRef.current[data.index],
                     status: 'publishing',
-                }
+                },
             };
             scheduleFlush();
             return;
         }
-        if (data.type === 'item-done' && data.scope === 'npm-publish') {
+        if (data.type === 'item-done' && data.scope === 'pip-publish') {
             const prev = perFileRef.current[data.index];
             perFileRef.current = {
                 ...perFileRef.current,
@@ -134,7 +150,7 @@ export function UploadPane() {
                     ...prev,
                     status: 'published',
                     received: prev?.total ?? prev?.received ?? 0,
-                }
+                },
             };
             scheduleFlush();
             return;
@@ -153,7 +169,7 @@ export function UploadPane() {
             setError(data.message || 'アップロードに失敗しました');
             perFileRef.current = Object.fromEntries(
                 Object.entries(perFileRef.current).map(([key, value]) => [key, { ...value, status: value.status === 'published' ? 'published' : 'error' }])
-            ) as Record<number, FileProgressState>;
+            ) as Record<number, PerFileState>;
             scheduleFlush();
             esRef.current?.close();
             esRef.current = null;
@@ -166,13 +182,13 @@ export function UploadPane() {
             setError('アップロードするファイルを選択してください');
             return;
         }
-        const registryUrl = values.registryUrl.trim();
-        if (!registryUrl) {
+        const repositoryUrl = values.repositoryUrl.trim();
+        if (!repositoryUrl) {
             setError('レジストリURLを入力してください');
             return;
         }
         try {
-            new URL(registryUrl);
+            new URL(repositoryUrl);
         } catch {
             setError('レジストリURLの形式が正しくありません');
             return;
@@ -185,7 +201,7 @@ export function UploadPane() {
         setJobId(newJobId);
         setStatus('running');
         perFileRef.current = Object.fromEntries(
-            values.files.map((file, idx) => [idx, { received: 0, total: file.size, status: 'waiting' } as FileProgressState])
+            values.files.map((file, idx) => [idx, { received: 0, total: file.size, status: 'waiting' } as PerFileState])
         );
         setPerFileSnap({ ...perFileRef.current });
         open();
@@ -195,9 +211,9 @@ export function UploadPane() {
         es.onmessage = (ev) => {
             try {
                 const payload = JSON.parse(ev.data) as ProgressEvent;
-                handleSseEvent(payload);
-            } catch (e) {
-                console.error('Failed to parse SSE payload', e);
+                handleEvent(payload);
+            } catch (err) {
+                console.error('Failed to parse SSE payload', err);
             }
         };
         es.onerror = (err) => {
@@ -211,19 +227,20 @@ export function UploadPane() {
 
         const params = new URLSearchParams({
             jobId: newJobId,
-            registryUrl,
+            repositoryUrl,
         });
-        const authTokenValue = form.getValues().authToken.trim();
-        if (authTokenValue) params.set('authToken', authTokenValue);
         const usernameValue = form.getValues().username.trim();
         const passwordValue = form.getValues().password;
+        const tokenValue = form.getValues().token.trim();
         if (usernameValue) params.set('username', usernameValue);
         if (passwordValue) params.set('password', passwordValue);
+        if (tokenValue) params.set('token', tokenValue);
+        if (form.getValues().skipExisting) params.set('skipExisting', 'true');
 
         try {
-            const res = await fetch(`/api/npm/upload?${params.toString()}`, {
+            const res = await fetch(`/api/pip/upload?${params.toString()}`, {
                 method: 'POST',
-                body: fd
+                body: fd,
             });
             if (!res.ok) {
                 const text = await res.text();
@@ -239,11 +256,6 @@ export function UploadPane() {
     });
 
     useEffect(() => {
-        getEnvironmentVar().then(v => {
-            form.setFieldValue("registryUrl", v.NPM_UPLOAD_REGISTRY);
-            form.setFieldValue("username", v.NPM_UPLOAD_USERNAME);
-            form.setFieldValue("password", v.NPM_UPLOAD_PASSWORD);
-        });
         return () => {
             if (flushTimerRef.current) {
                 clearTimeout(flushTimerRef.current);
@@ -255,82 +267,77 @@ export function UploadPane() {
 
     return (
         <div>
-            <Alert
-                variant="light"
-                color="yellow"
-                title="注意"
-                radius="lg"
-                my="xl"
-            >
+            <Alert variant="light" color="yellow" title="注意" radius="lg" my="xl">
                 大きなファイルのアップロードには時間がかかる場合があります。ブラウザを閉じると中断されます。
             </Alert>
 
             <form onSubmit={onSubmit}>
                 <Stack>
-                    <Accordion
-                        variant="separated"
-                        radius="lg"
-                    >
-                        <Accordion.Item
-                            value="upload_settings"
-                            key="upload_settings"
-                        >
-                            <Accordion.Control
-                                icon={<IconCloudCog size="1em"/>}
-                            >
-                                アップロード先設定
-                            </Accordion.Control>
-                            <Accordion.Panel>
-                                <Stack>
-                                    <TextInput
-                                        label="レジストリURL"
-                                        description="例: https://nexus.example.com/repository/npm-hosted"
-                                        size="lg"
-                                        radius="lg"
-                                        placeholder="https://registry.example.com/npm"
-                                        key={form.key('registryUrl')}
-                                        {...form.getInputProps('registryUrl')}
-                                        disabled={loading}
-                                    />
-                                    <TextInput
-                                        label="Auth Token (任意)"
-                                        description="トークン認証を使用する場合に入力"
-                                        size="lg"
-                                        radius="lg"
-                                        placeholder="npm-xxxxxxxxxxxxxxxx"
-                                        key={form.key('authToken')}
-                                        {...form.getInputProps('authToken')}
-                                        disabled={loading}
-                                    />
-                                    <Group grow>
-                                        <TextInput
-                                            label="ユーザー名 (任意、トークン未使用時)"
-                                            size="lg"
-                                            radius="lg"
-                                            placeholder="username"
-                                            key={form.key('username')}
-                                            {...form.getInputProps('username')}
-                                            disabled={loading}
-                                        />
-                                        <PasswordInput
-                                            label="パスワード (任意、トークン未使用時)"
-                                            size="lg"
-                                            radius="lg"
-                                            placeholder="password"
-                                            key={form.key('password')}
-                                            {...form.getInputProps('password')}
-                                            disabled={loading}
-                                            autoComplete="current-password"
-                                        />
-                                    </Group>
-                                </Stack>
-                            </Accordion.Panel>
-                        </Accordion.Item>
-                    </Accordion>
+                    <Stack gap="lg" p="lg" style={{ border: '1px solid var(--mantine-color-gray-3)', borderRadius: 'var(--mantine-radius-lg)' }}>
+                        <Group gap="xs">
+                            <IconCloudCog size="1em" />
+                            <Text fw={600}>アップロード先設定</Text>
+                        </Group>
+                        <Stack>
+                            <TextInput
+                                label="レジストリURL"
+                                description="例: https://nexus.example.com/repository/pypi-hosted/"
+                                size="lg"
+                                radius="lg"
+                                placeholder="https://pypi.example.com/"
+                                key={form.key('repositoryUrl')}
+                                {...form.getInputProps('repositoryUrl')}
+                                disabled={loading}
+                            />
+                            <Group grow>
+                                <TextInput
+                                    label="ユーザー名 (任意)"
+                                    size="lg"
+                                    radius="lg"
+                                    placeholder="username"
+                                    key={form.key('username')}
+                                    {...form.getInputProps('username')}
+                                    disabled={loading}
+                                />
+                                <PasswordInput
+                                    label="パスワード (任意)"
+                                    size="lg"
+                                    radius="lg"
+                                    placeholder="password"
+                                    key={form.key('password')}
+                                    {...form.getInputProps('password')}
+                                    disabled={loading}
+                                    autoComplete="current-password"
+                                />
+                            </Group>
+                            <TextInput
+                                label="トークン (任意)"
+                                description="API Token を使用する場合に入力"
+                                size="lg"
+                                radius="lg"
+                                placeholder="pypi-xxxxxxxxxxxx"
+                                key={form.key('token')}
+                                {...form.getInputProps('token')}
+                                disabled={loading}
+                            />
+                            <Checkbox
+                                label="すでに存在する場合はスキップ (--skip-existing)"
+                                key={form.key('skipExisting')}
+                                {...form.getInputProps('skipExisting', { type: 'checkbox' })}
+                                disabled={loading}
+                            />
+                        </Stack>
+                    </Stack>
 
                     <Dropzone
                         onDrop={(files) => form.setFieldValue('files', files)}
-                        accept={["application/x-tar", "application/gzip", "application/x-compressed", "application/octet-stream"]}
+                        accept={{
+                            "application/zip": [".zip", ".whl"],
+                            "application/vnd.python.wheel": [".whl"],
+                            "application/octet-stream": [".whl"],
+                            "application/x-tar": [".tar.gz"],
+                            "application/gzip": [".tar.gz"]
+                        }}
                         radius="lg"
                         p="xl"
                         disabled={loading}
@@ -349,11 +356,11 @@ export function UploadPane() {
                             </Group>
                             <Text ta="center" fw={700} fz="lg" mt="xl">
                                 <Dropzone.Accept>ここにファイルをドロップ</Dropzone.Accept>
-                                <Dropzone.Idle>npm バンドルをアップロード</Dropzone.Idle>
+                                <Dropzone.Idle>.whl/.tar.gz/.zip をアップロード</Dropzone.Idle>
                                 <Dropzone.Reject>対応していないファイルです</Dropzone.Reject>
                             </Text>
                             <Text ta="center" c="dimmed">
-                                `.tar` / `.tgz` 形式のファイルを選択してください
+                                ビルド済みの Wheel またはソースディストリビューションを選択してください
                             </Text>
                         </div>
                     </Dropzone>

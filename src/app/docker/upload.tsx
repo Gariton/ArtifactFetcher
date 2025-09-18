@@ -24,7 +24,7 @@ type FormType = {
 
 type EnvType = {
     DOCKER_UPLOAD: string;
-    DOCKER_UPLOAD_REGISTORY: string;
+    DOCKER_UPLOAD_REGISTRY: string;
     DOCKER_UPLOAD_USERNAME: string;
     DOCKER_UPLOAD_PASSWORD: string;
 }
@@ -55,7 +55,7 @@ export function UploadPane() {
     const esRef = useRef<EventSource | null>(null);
     const [env, setEnv] = useState<EnvType>({
         DOCKER_UPLOAD: "yes",
-        DOCKER_UPLOAD_REGISTORY: "",
+        DOCKER_UPLOAD_REGISTRY: "",
         DOCKER_UPLOAD_USERNAME: "",
         DOCKER_UPLOAD_PASSWORD: "",
     });
@@ -73,7 +73,7 @@ export function UploadPane() {
         initialValues: {
             files: [],
             useManifest: true,
-            registry: env.DOCKER_UPLOAD_REGISTORY || '',
+            registry: env.DOCKER_UPLOAD_REGISTRY || '',
             repo: "",
             tag: "",
             username: env.DOCKER_UPLOAD_USERNAME || '',
@@ -229,11 +229,11 @@ export function UploadPane() {
         getEnvironmentVar().then(v => {
             setEnv({
                 DOCKER_UPLOAD: v.DOCKER_UPLOAD,
-                DOCKER_UPLOAD_REGISTORY: v.DOCKER_UPLOAD_REGISTORY,
+                DOCKER_UPLOAD_REGISTRY: v.DOCKER_UPLOAD_REGISTRY,
                 DOCKER_UPLOAD_USERNAME: v.DOCKER_UPLOAD_USERNAME,
                 DOCKER_UPLOAD_PASSWORD: v.DOCKER_UPLOAD_PASSWORD
             })
-            form.setFieldValue("registry", v.DOCKER_UPLOAD_REGISTORY);
+            form.setFieldValue("registry", v.DOCKER_UPLOAD_REGISTRY);
             form.setFieldValue("username", v.DOCKER_UPLOAD_USERNAME);
             form.setFieldValue("password", v.DOCKER_UPLOAD_PASSWORD);
         });

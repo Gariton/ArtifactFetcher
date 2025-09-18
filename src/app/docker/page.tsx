@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 
 type EnvType = {
     DOCKER_UPLOAD: string;
-    DOCKER_UPLOAD_REGISTORY: string;
+    DOCKER_UPLOAD_REGISTRY: string;
     DOCKER_UPLOAD_USERNAME: string;
     DOCKER_UPLOAD_PASSWORD: string;
 }
@@ -17,7 +17,7 @@ export default function Docker() {
 
     const [env, setEnv] = useState<EnvType>({
         DOCKER_UPLOAD: "yes",
-        DOCKER_UPLOAD_REGISTORY: "",
+        DOCKER_UPLOAD_REGISTRY: "",
         DOCKER_UPLOAD_USERNAME: "",
         DOCKER_UPLOAD_PASSWORD: "",
     });

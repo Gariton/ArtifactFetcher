@@ -45,7 +45,7 @@ function statusBadge(status: Props['status']) {
     }
 }
 
-export function NpmUploadModal({ files, perFile, status, jobId, onClose, ...props }: Props) {
+export function PackageUploadModal({ files, perFile, status, jobId, onClose, ...props }: Props) {
     return (
         <Modal
             {...props}

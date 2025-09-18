@@ -35,8 +35,8 @@ const apps = [
     },
     {
         title: "pip package",
-        description: "coming soon...",
-        href: "",
+        description: "PyPI や社内レジストリから pip パッケージをまとめて取得し、任意のレジストリにアップロードできます。",
+        href: "/pip",
         icon: <ThemeIcon
             variant="transparent"
             size={70}

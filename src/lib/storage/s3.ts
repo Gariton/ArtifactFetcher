@@ -70,7 +70,7 @@ export async function uploadFileToS3({ filePath, key, contentType }: { filePath:
     await uploader.done();
 }
 
-export async function uploadStreamToS3({ stream, key, contentType }: { stream: NodeJS.ReadableStream; key: string; contentType?: string; }) {
+export async function uploadStreamToS3({ stream, key, contentType }: { stream: Readable; key: string; contentType?: string; }) {
     const client = getClient();
     const cfg = resolveConfig();
     const uploader = new Upload({

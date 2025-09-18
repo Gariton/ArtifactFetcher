@@ -81,6 +81,9 @@ export function UploadPane() {
     const handleSseEvent = useCallback((data: ProgressEvent) => {
         if (data.type === 'stage') {
             setStatus('running');
+            if (data.stage === 'npm-publish-start') {
+                open();
+            }
             return;
         }
         if (data.type === 'item-start' && data.scope === 'npm-upload') {
@@ -146,6 +149,27 @@ export function UploadPane() {
             scheduleFlush();
             return;
         }
+        if (data.type === 'item-error' && data.scope === 'npm-publish') {
+            const prev = perFileRef.current[data.index];
+            perFileRef.current = {
+                ...perFileRef.current,
+                [data.index]: {
+                    ...prev,
+                    status: 'error',
+                    received: prev?.received ?? 0,
+                    total: prev?.total,
+                },
+            };
+            setError(data.message || 'アップロードに失敗しました');
+            scheduleFlush();
+            return;
+        }
+        if (data.type === 'error-summary') {
+            const failedNames = data.failures.map((f) => f.name).join(', ');
+            setError(failedNames ? `一部のパッケージでエラー: ${failedNames}` : '一部パッケージでエラーが発生しました');
+            scheduleFlush();
+            return;
+        }
         if (data.type === 'done') {
             setStatus('done');
             setLoading(false);
@@ -166,7 +190,7 @@ export function UploadPane() {
             esRef.current = null;
             return;
         }
-    }, [scheduleFlush]);
+    }, [scheduleFlush, open]);
 
     const onSubmit = form.onSubmit(async (values) => {
         if (values.files.length === 0) {
@@ -187,6 +211,7 @@ export function UploadPane() {
         setLoading(true);
         setError(null);
         resetStreams();
+        close();
 
         const newJobId = nanoid();
         setJobId(newJobId);
@@ -195,8 +220,6 @@ export function UploadPane() {
             values.files.map((file, idx) => [idx, { received: 0, total: file.size, status: 'waiting' } as FileProgressState])
         );
         setPerFileSnap({ ...perFileRef.current });
-        open();
-
         const es = new EventSource(`/api/build/progress?jobId=${newJobId}`);
         esRef.current = es;
         es.onmessage = (ev) => {

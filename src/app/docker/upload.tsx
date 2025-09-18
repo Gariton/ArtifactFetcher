@@ -227,7 +227,12 @@ export function UploadPane() {
 
     useEffect(() => {
         getEnvironmentVar().then(v => {
-            setEnv(v)
+            setEnv({
+                DOCKER_UPLOAD: v.DOCKER_UPLOAD,
+                DOCKER_UPLOAD_REGISTORY: v.DOCKER_UPLOAD_REGISTORY,
+                DOCKER_UPLOAD_USERNAME: v.DOCKER_UPLOAD_USERNAME,
+                DOCKER_UPLOAD_PASSWORD: v.DOCKER_UPLOAD_PASSWORD
+            })
             form.setFieldValue("registry", v.DOCKER_UPLOAD_REGISTORY);
             form.setFieldValue("username", v.DOCKER_UPLOAD_USERNAME);
             form.setFieldValue("password", v.DOCKER_UPLOAD_PASSWORD);

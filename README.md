@@ -183,6 +183,11 @@ npm run download -- npm next ^18 --host https://downloader.example.com --out dow
 - npm registry のメタから **依存を再帰解決 → すべての tarball を取得 → 1つの `.tar` に収容**  
 - 進捗は **解決件数 / 個別 tarball のバイト数**で SSE 送出  
 
+### npm パッケージのアップロード
+- 生成済みの npm バンドル (`.tar` / `.tgz`) を複数まとめて選択し、サーバ側で `npm publish <tarball>` を実行して Nexus など任意のレジストリへ公開  
+- UI からレジストリ URL、Auth Token または Basic 認証情報を指定でき、進捗は SSE でモーダル表示  
+- 例: `https://nexus.example.com/repository/npm-hosted` + Auth Token（もしくはユーザー/パスワード）  
+
 ---
 
 ## トラブルシュート

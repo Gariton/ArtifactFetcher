@@ -57,7 +57,7 @@ export const UploadModal = memo(function UploadModalMemo ({
                 </Group>
 
                 <ScrollArea
-                    h={600}
+                    h={550}
                 >
                     <Accordion
                         radius="md"

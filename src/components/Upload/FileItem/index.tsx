@@ -16,6 +16,10 @@ export const FileItem = memo(function FileItemMemo ({
     loading?: boolean;
     disabled?: boolean;
 }) {
+    const showCheck = status === 'done' || status === 'published';
+    const showProgress = ['processing', 'uploading', 'publishing'].includes(status);
+    const showIdle = !status || ['waiting'].includes(status);
+
     return (
         <Card
             withBorder
@@ -33,20 +37,20 @@ export const FileItem = memo(function FileItemMemo ({
                     ]}
                     label={
                         <Center>
-                            {status == "done" && (
+                            {showCheck && (
                                 <IconCheck
                                     size="1.3em"
                                     stroke={3}
                                 />
                             )}
-                            {status == "processing" && (
+                            {showProgress && !showCheck && (
                                 <Text
                                     size="xs"
                                 >
                                     {percent}%
                                 </Text>
                             )}  
-                            {(status == undefined || status == "waiting") && (
+                            {showIdle && (
                                 <IconFileNeutral
                                     size="1.3em"
                                 />

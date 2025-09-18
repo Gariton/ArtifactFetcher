@@ -99,6 +99,9 @@ export async function POST(req: NextRequest) {
             return new Response(JSON.stringify({ error: 'no files' }), { status: 400 });
         }
 
+        const successes: Array<{ name: string; index: number }> = [];
+        const failures: Array<{ name: string; index: number; error: string }> = [];
+
         bus.emitEvent({ type: 'stage', stage: 'npm-publish-start' });
         for (let i = 0; i < files.length; i++) {
             const file = files[i]!;
@@ -112,16 +115,30 @@ export async function POST(req: NextRequest) {
                     username,
                     password,
                 });
+                successes.push({ name: file.name, index: file.index });
                 bus.emitEvent({ type: 'item-done', scope: 'npm-publish', index: file.index });
-            } catch (err) {
-                throw err;
+            } catch (err: any) {
+                const message = err?.message || 'publish failed';
+                failures.push({ name: file.name, index: file.index, error: message });
+                bus.emitEvent({ type: 'item-error', scope: 'npm-publish', index: file.index, message });
             }
         }
 
-        jobStore.set(jobId, { status: 'done', filename: `published ${files.length} packages` });
-        bus.emitEvent({ type: 'done', filename: `published ${files.length} packages` });
-        return new Response(JSON.stringify({ jobId, count: files.length }), {
-            status: 200,
+        if (failures.length === files.length) {
+            const lastError = failures[failures.length - 1]?.error || 'failed';
+            jobStore.set(jobId, { status: 'error', error: lastError });
+            bus.emitEvent({ type: 'error', message: lastError });
+            return new Response(JSON.stringify({ error: lastError, failures, successes }), { status: 500 });
+        }
+
+        const summary = `published ${successes.length} packages` + (failures.length ? `, ${failures.length} failed` : '');
+        jobStore.set(jobId, { status: failures.length ? 'error' : 'done', filename: summary });
+        if (failures.length) {
+            bus.emitEvent({ type: 'error-summary', successes, failures });
+        }
+        bus.emitEvent({ type: 'done', filename: summary });
+        return new Response(JSON.stringify({ jobId, count: successes.length, failures }), {
+            status: failures.length ? 207 : 200,
             headers: { 'Content-Type': 'application/json' },
         });
     } catch (err: any) {

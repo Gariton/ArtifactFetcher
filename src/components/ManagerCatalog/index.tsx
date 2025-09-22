@@ -1,15 +1,16 @@
 'use client';
 
 import { ActionIcon, Button, Modal, SimpleGrid, Stack, Text, Tooltip } from '@mantine/core';
-import type { TablerIconsProps } from '@tabler/icons-react';
-import { useState } from 'react';
+import { TablerIcon } from '@tabler/icons-react';
+// import * as TablerIconsProps from '@tabler/icons-react';
+import { ReactNode, useState } from 'react';
 
 export type ManagerEntry = {
     id: string;
     name: string;
     description: string;
     href: string;
-    Icon: (props: TablerIconsProps) => JSX.Element;
+    Icon: TablerIcon;
     color?: string;
 };
 

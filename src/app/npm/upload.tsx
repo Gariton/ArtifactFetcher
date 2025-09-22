@@ -11,6 +11,7 @@ import { ProgressEvent } from '@/lib/progressBus';
 import { FileItem } from '@/components/Upload/FileItem';
 import { NpmUploadModal } from '@/components/NpmUpload/Modal';
 import { getEnvironmentVar } from '@/components/actions';
+import { useRetryableEventSource } from '@/lib/useRetryableEventSource';
 
 const FLUSH_INTERVAL = 250;
 
@@ -34,7 +35,7 @@ export function UploadPane() {
     const perFileRef = useRef<Record<number, FileProgressState>>({});
     const [perFileSnap, setPerFileSnap] = useState<Record<number, FileProgressState>>({});
     const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
-    const esRef = useRef<EventSource | null>(null);
+    const stopSseRef = useRef<() => void>(() => {});
     const [env, setEnv] = useState({
         NPM_UPLOAD: "yes",
         NPM_UPLOAD_REGISTORY: "",
@@ -60,8 +61,7 @@ export function UploadPane() {
             clearTimeout(flushTimerRef.current);
             flushTimerRef.current = null;
         }
-        esRef.current?.close();
-        esRef.current = null;
+        stopSseRef.current();
     }, []);
 
     const form = useForm<FormValues>({
@@ -174,8 +174,7 @@ export function UploadPane() {
             setStatus('done');
             setLoading(false);
             scheduleFlush();
-            esRef.current?.close();
-            esRef.current = null;
+            stopSseRef.current();
             return;
         }
         if (data.type === 'error') {
@@ -186,11 +185,35 @@ export function UploadPane() {
                 Object.entries(perFileRef.current).map(([key, value]) => [key, { ...value, status: value.status === 'published' ? 'published' : 'error' }])
             ) as Record<number, FileProgressState>;
             scheduleFlush();
-            esRef.current?.close();
-            esRef.current = null;
+            stopSseRef.current();
             return;
         }
     }, [scheduleFlush, open]);
+
+    const handleSseMessage = useCallback((event: MessageEvent) => {
+        try {
+            const payload = JSON.parse(event.data) as ProgressEvent;
+            handleSseEvent(payload);
+        } catch (err) {
+            console.error('Failed to parse SSE payload', err);
+        }
+    }, [handleSseEvent]);
+
+    const { start: startSse, stop: stopSse } = useRetryableEventSource({
+        onMessage: handleSseMessage,
+        onOpen: () => {
+            console.debug('SSE open');
+        },
+        onError: (event) => {
+            console.error('SSE error', event);
+        },
+        notificationId: 'npm-upload-sse',
+        notificationLabel: 'npmアップロード進捗'
+    });
+
+    useEffect(() => {
+        stopSseRef.current = stopSse;
+    }, [stopSse]);
 
     const onSubmit = form.onSubmit(async (values) => {
         if (values.files.length === 0) {
@@ -220,19 +243,7 @@ export function UploadPane() {
             values.files.map((file, idx) => [idx, { received: 0, total: file.size, status: 'waiting' } as FileProgressState])
         );
         setPerFileSnap({ ...perFileRef.current });
-        const es = new EventSource(`/api/build/progress?jobId=${newJobId}`);
-        esRef.current = es;
-        es.onmessage = (ev) => {
-            try {
-                const payload = JSON.parse(ev.data) as ProgressEvent;
-                handleSseEvent(payload);
-            } catch (e) {
-                console.error('Failed to parse SSE payload', e);
-            }
-        };
-        es.onerror = (err) => {
-            console.error('SSE error', err);
-        };
+        startSse(`/api/build/progress?jobId=${newJobId}`);
 
         const fd = new FormData();
         for (const file of values.files) {
@@ -263,8 +274,7 @@ export function UploadPane() {
             setLoading(false);
             setStatus('error');
             setError(e?.message || 'アップロードに失敗しました');
-            es.close();
-            esRef.current = null;
+            stopSse();
         }
     });
 
@@ -286,9 +296,9 @@ export function UploadPane() {
                 clearTimeout(flushTimerRef.current);
                 flushTimerRef.current = null;
             }
-            esRef.current?.close();
+            stopSseRef.current();
         };
-    }, []);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <div>

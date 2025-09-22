@@ -36,7 +36,7 @@ export const AppHeader = ({
                     className={classes.link}
                     visibleFrom="xs"
                 >
-                    Docker
+                    docker
                 </Anchor>
                 <Anchor
                     href="/npm"
@@ -44,6 +44,13 @@ export const AppHeader = ({
                     visibleFrom="xs"
                 >
                     npm
+                </Anchor>
+                <Anchor
+                    href="/pip"
+                    className={classes.link}
+                    visibleFrom="xs"
+                >
+                    pip
                 </Anchor>
                 <ActionIcon
                     variant="transparent"

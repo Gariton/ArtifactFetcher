@@ -45,7 +45,7 @@ function statusBadge(status: Props['status']) {
     }
 }
 
-export function NpmUploadModal({ files, perFile, status, jobId, onClose, ...props }: Props) {
+export function PackageUploadModal({ files, perFile, status, jobId, onClose, ...props }: Props) {
     return (
         <Modal
             {...props}
@@ -121,7 +121,7 @@ export function NpmUploadModal({ files, perFile, status, jobId, onClose, ...prop
                                 return (
                                     <Stack key={`${file.name}-${idx}`} gap={4}>
                                         <Group justify="space-between">
-                                            <Text size="sm" fw={500}>
+                                            <Text size="sm" fw={500} lineClamp={1}>
                                                 {file.name}
                                             </Text>
                                             <Badge radius="sm" color={badgeColor}>

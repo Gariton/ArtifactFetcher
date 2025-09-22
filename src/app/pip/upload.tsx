@@ -1,49 +1,57 @@
 'use client';
 
-import { Accordion, Alert, Button, Group, PasswordInput, Space, Stack, Text, TextInput } from '@mantine/core';
+import { PackageUploadModal } from '@/components/PackageUpload/Modal';
+import { ProgressEvent } from '@/lib/progressBus';
+import { Accordion, Alert, Button, Checkbox, FileInput, Group, PasswordInput, Space, Stack, Text, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { Dropzone } from '@mantine/dropzone';
 import { IconCloudCog, IconCloudUpload, IconDownload, IconX } from '@tabler/icons-react';
 import { nanoid } from 'nanoid';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ProgressEvent } from '@/lib/progressBus';
 import { FileItem } from '@/components/Upload/FileItem';
-import { PackageUploadModal } from '@/components/PackageUpload/Modal';
 import { getEnvironmentVar } from '@/components/actions';
-import { useRetryableEventSource } from '@/lib/useRetryableEventSource';
 
-const FLUSH_INTERVAL = 250;
+type Status = 'idle' | 'running' | 'done' | 'error';
+
+type PerFileState = {
+    received: number;
+    total?: number;
+    status: string;
+};
+
+type EnvProps = {
+    PIP_UPLOAD: string;
+    PIP_UPLOAD_REGISTRY: string;
+    PIP_UPLOAD_USERNAME: string;
+    PIP_UPLOAD_PASSWORD: string;
+    PIP_UPLOAD_TOKEN: string;
+    PIP_UPLOAD_SKIP_EXISTING: string;
+};
 
 type FormValues = {
     files: File[];
-    registryUrl: string;
-    authToken: string;
+    repositoryUrl: string;
     username: string;
     password: string;
+    token: string;
+    skipExisting: boolean;
+    caCert: File | null;
 };
 
-type FileProgressState = { received: number; total?: number; status: string };
+const FLUSH_INTERVAL = 250;
 
-export function UploadPane() {
+export function UploadPane({ env }: { env: EnvProps }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [jobId, setJobId] = useState<string | null>(null);
-    const [status, setStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+    const [status, setStatus] = useState<Status>('idle');
     const [opened, { open, close }] = useDisclosure(false);
 
-    const perFileRef = useRef<Record<number, FileProgressState>>({});
-    const [perFileSnap, setPerFileSnap] = useState<Record<number, FileProgressState>>({});
+    const perFileRef = useRef<Record<number, PerFileState>>({});
+    const [perFileSnap, setPerFileSnap] = useState<Record<number, PerFileState>>({});
     const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
     const esRef = useRef<EventSource | null>(null);
-    const stopSseRef = useRef<() => void>(() => {});
-    const [env, setEnv] = useState({
-        NPM_UPLOAD: "yes",
-        NPM_UPLOAD_REGISTORY: "",
-        NPM_UPLOAD_AUTH_TOKEN: "",
-        NPM_UPLOAD_USERNAME: "",
-        NPM_UPLOAD_PASSWORD: "",
-    });
 
     const scheduleFlush = useCallback(() => {
         if (flushTimerRef.current) return;
@@ -62,58 +70,58 @@ export function UploadPane() {
             clearTimeout(flushTimerRef.current);
             flushTimerRef.current = null;
         }
-        stopSseRef.current();
+        esRef.current?.close();
+        esRef.current = null;
     }, []);
 
     const form = useForm<FormValues>({
         mode: 'uncontrolled',
         initialValues: {
             files: [],
-            registryUrl: '',
-            authToken: '',
-            username: '',
-            password: '',
+            repositoryUrl: env.PIP_UPLOAD_REGISTRY || '',
+            username: env.PIP_UPLOAD_USERNAME || '',
+            password: env.PIP_UPLOAD_PASSWORD || '',
+            token: env.PIP_UPLOAD_TOKEN || '',
+            skipExisting: /^(1|true|on|yes)$/i.test(env.PIP_UPLOAD_SKIP_EXISTING || ''),
+            caCert: null,
         },
         validate: {
-            registryUrl: (v) => (v.trim() === '' ? 'レジストリURLを入力してください' : null),
+            repositoryUrl: (value) => (value.trim() === '' ? 'レジストリURLを入力してください' : null),
         },
     });
 
-    const handleSseEvent = useCallback((data: ProgressEvent) => {
+    const handleEvent = useCallback((data: ProgressEvent) => {
         if (data.type === 'stage') {
             setStatus('running');
-            if (data.stage === 'npm-publish-start') {
-                open();
-            }
             return;
         }
-        if (data.type === 'item-start' && data.scope === 'npm-upload') {
+        if (data.type === 'item-start' && data.scope === 'pip-upload') {
             perFileRef.current = {
                 ...perFileRef.current,
                 [data.index]: {
                     ...perFileRef.current[data.index],
                     status: 'uploading',
                     received: perFileRef.current[data.index]?.received ?? 0,
-                    total: perFileRef.current[data.index]?.total
-                }
+                    total: data.total ?? perFileRef.current[data.index]?.total,
+                },
             };
             scheduleFlush();
             return;
         }
-        if (data.type === 'item-progress' && data.scope === 'npm-upload') {
+        if (data.type === 'item-progress' && data.scope === 'pip-upload') {
             perFileRef.current = {
                 ...perFileRef.current,
                 [data.index]: {
                     ...perFileRef.current[data.index],
                     status: 'uploading',
                     received: data.received,
-                    total: perFileRef.current[data.index]?.total
-                }
+                    total: data.total ?? perFileRef.current[data.index]?.total,
+                },
             };
             scheduleFlush();
             return;
         }
-        if (data.type === 'item-done' && data.scope === 'npm-upload') {
+        if (data.type === 'item-done' && data.scope === 'pip-upload') {
             const prev = perFileRef.current[data.index];
             perFileRef.current = {
                 ...perFileRef.current,
@@ -121,23 +129,23 @@ export function UploadPane() {
                     ...prev,
                     status: 'uploaded',
                     received: prev?.total ?? prev?.received ?? 0,
-                }
+                },
             };
             scheduleFlush();
             return;
         }
-        if (data.type === 'item-start' && data.scope === 'npm-publish') {
+        if (data.type === 'item-start' && data.scope === 'pip-publish') {
             perFileRef.current = {
                 ...perFileRef.current,
                 [data.index]: {
                     ...perFileRef.current[data.index],
                     status: 'publishing',
-                }
+                },
             };
             scheduleFlush();
             return;
         }
-        if (data.type === 'item-done' && data.scope === 'npm-publish') {
+        if (data.type === 'item-done' && data.scope === 'pip-publish') {
             const prev = perFileRef.current[data.index];
             perFileRef.current = {
                 ...perFileRef.current,
@@ -145,29 +153,8 @@ export function UploadPane() {
                     ...prev,
                     status: 'published',
                     received: prev?.total ?? prev?.received ?? 0,
-                }
-            };
-            scheduleFlush();
-            return;
-        }
-        if (data.type === 'item-error' && data.scope === 'npm-publish') {
-            const prev = perFileRef.current[data.index];
-            perFileRef.current = {
-                ...perFileRef.current,
-                [data.index]: {
-                    ...prev,
-                    status: 'error',
-                    received: prev?.received ?? 0,
-                    total: prev?.total,
                 },
             };
-            setError(data.message || 'アップロードに失敗しました');
-            scheduleFlush();
-            return;
-        }
-        if (data.type === 'error-summary') {
-            const failedNames = data.failures.map((f) => f.name).join(', ');
-            setError(failedNames ? `一部のパッケージでエラー: ${failedNames}` : '一部パッケージでエラーが発生しました');
             scheduleFlush();
             return;
         }
@@ -175,7 +162,8 @@ export function UploadPane() {
             setStatus('done');
             setLoading(false);
             scheduleFlush();
-            stopSseRef.current();
+            esRef.current?.close();
+            esRef.current = null;
             return;
         }
         if (data.type === 'error') {
@@ -184,50 +172,26 @@ export function UploadPane() {
             setError(data.message || 'アップロードに失敗しました');
             perFileRef.current = Object.fromEntries(
                 Object.entries(perFileRef.current).map(([key, value]) => [key, { ...value, status: value.status === 'published' ? 'published' : 'error' }])
-            ) as Record<number, FileProgressState>;
+            ) as Record<number, PerFileState>;
             scheduleFlush();
-            stopSseRef.current();
+            esRef.current?.close();
+            esRef.current = null;
             return;
         }
-    }, [scheduleFlush, open]);
-
-    const handleSseMessage = useCallback((event: MessageEvent) => {
-        try {
-            const payload = JSON.parse(event.data) as ProgressEvent;
-            handleSseEvent(payload);
-        } catch (err) {
-            console.error('Failed to parse SSE payload', err);
-        }
-    }, [handleSseEvent]);
-
-    const { start: startSse, stop: stopSse } = useRetryableEventSource({
-        onMessage: handleSseMessage,
-        onOpen: () => {
-            console.debug('SSE open');
-        },
-        onError: (event) => {
-            console.error('SSE error', event);
-        },
-        notificationId: 'npm-upload-sse',
-        notificationLabel: 'npmアップロード進捗'
-    });
-
-    useEffect(() => {
-        stopSseRef.current = stopSse;
-    }, [stopSse]);
+    }, [scheduleFlush]);
 
     const onSubmit = form.onSubmit(async (values) => {
         if (values.files.length === 0) {
             setError('アップロードするファイルを選択してください');
             return;
         }
-        const registryUrl = values.registryUrl.trim();
-        if (!registryUrl) {
+        const repositoryUrl = values.repositoryUrl.trim();
+        if (!repositoryUrl) {
             setError('レジストリURLを入力してください');
             return;
         }
         try {
-            new URL(registryUrl);
+            new URL(repositoryUrl);
         } catch {
             setError('レジストリURLの形式が正しくありません');
             return;
@@ -235,37 +199,54 @@ export function UploadPane() {
         setLoading(true);
         setError(null);
         resetStreams();
-        close();
 
         const newJobId = nanoid();
         setJobId(newJobId);
         setStatus('running');
         perFileRef.current = Object.fromEntries(
-            values.files.map((file, idx) => [idx, { received: 0, total: file.size, status: 'waiting' } as FileProgressState])
+            values.files.map((file, idx) => [idx, { received: 0, total: file.size, status: 'waiting' } as PerFileState])
         );
         setPerFileSnap({ ...perFileRef.current });
-        startSse(`/api/build/progress?jobId=${newJobId}`);
+        open();
+
+        const es = new EventSource(`/api/build/progress?jobId=${newJobId}`);
+        esRef.current = es;
+        es.onmessage = (ev) => {
+            try {
+                const payload = JSON.parse(ev.data) as ProgressEvent;
+                handleEvent(payload);
+            } catch (err) {
+                console.error('Failed to parse SSE payload', err);
+            }
+        };
+        es.onerror = (err) => {
+            console.error('SSE error', err);
+        };
 
         const fd = new FormData();
         for (const file of values.files) {
             fd.append('files', file, file.name);
         }
+        if (values.caCert) {
+            fd.append('caCert', values.caCert, values.caCert.name);
+        }
 
         const params = new URLSearchParams({
             jobId: newJobId,
-            registryUrl,
+            repositoryUrl,
         });
-        const authTokenValue = form.getValues().authToken.trim();
-        if (authTokenValue) params.set('authToken', authTokenValue);
         const usernameValue = form.getValues().username.trim();
         const passwordValue = form.getValues().password;
+        const tokenValue = form.getValues().token.trim();
         if (usernameValue) params.set('username', usernameValue);
         if (passwordValue) params.set('password', passwordValue);
+        if (tokenValue) params.set('token', tokenValue);
+        if (form.getValues().skipExisting) params.set('skipExisting', 'true');
 
         try {
-            const res = await fetch(`/api/npm/upload?${params.toString()}`, {
+            const res = await fetch(`/api/pip/upload?${params.toString()}`, {
                 method: 'POST',
-                body: fd
+                body: fd,
             });
             if (!res.ok) {
                 const text = await res.text();
@@ -275,34 +256,29 @@ export function UploadPane() {
             setLoading(false);
             setStatus('error');
             setError(e?.message || 'アップロードに失敗しました');
-            stopSse();
+            es.close();
+            esRef.current = null;
         }
     });
 
     useEffect(() => {
         getEnvironmentVar().then(v => {
-            form.setFieldValue("registryUrl", v.NPM_UPLOAD_REGISTRY);
-            form.setFieldValue("username", v.NPM_UPLOAD_USERNAME);
-            form.setFieldValue("password", v.NPM_UPLOAD_PASSWORD);
+            form.setFieldValue("repositoryUrl", v.PIP_UPLOAD_REGISTRY);
+            form.setFieldValue("username", v.PIP_UPLOAD_USERNAME);
+            form.setFieldValue("password", v.PIP_UPLOAD_PASSWORD);
         });
         return () => {
             if (flushTimerRef.current) {
                 clearTimeout(flushTimerRef.current);
                 flushTimerRef.current = null;
             }
-            stopSseRef.current();
+            esRef.current?.close();
         };
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }, []);
 
     return (
         <div>
-            <Alert
-                variant="light"
-                color="yellow"
-                title="注意"
-                radius="lg"
-                my="xl"
-            >
+            <Alert variant="light" color="yellow" title="注意" radius="lg" my="xl">
                 大きなファイルのアップロードには時間がかかる場合があります。ブラウザを閉じると中断されます。
             </Alert>
 
@@ -323,47 +299,68 @@ export function UploadPane() {
                             </Accordion.Control>
                             <Accordion.Panel>
                                 <Stack>
-                                    <TextInput
-                                        label="レジストリURL"
-                                        description="例: https://nexus.example.com/repository/npm-hosted"
-                                        size="lg"
-                                        radius="lg"
-                                        placeholder="https://registry.example.com/npm"
-                                        key={form.key('registryUrl')}
-                                        {...form.getInputProps('registryUrl')}
-                                        disabled={loading}
-                                    />
-                                    <TextInput
-                                        label="Auth Token (任意)"
-                                        description="トークン認証を使用する場合に入力"
-                                        size="lg"
-                                        radius="lg"
-                                        placeholder="npm-xxxxxxxxxxxxxxxx"
-                                        key={form.key('authToken')}
-                                        {...form.getInputProps('authToken')}
-                                        disabled={loading}
-                                    />
-                                    <Group grow>
+                                    <Stack>
                                         <TextInput
-                                            label="ユーザー名 (任意、トークン未使用時)"
+                                            label="レジストリURL"
+                                            description="例: https://nexus.example.com/repository/pypi-hosted/"
                                             size="lg"
                                             radius="lg"
-                                            placeholder="username"
-                                            key={form.key('username')}
-                                            {...form.getInputProps('username')}
+                                            placeholder="https://pypi.example.com/"
+                                            key={form.key('repositoryUrl')}
+                                            {...form.getInputProps('repositoryUrl')}
                                             disabled={loading}
                                         />
-                                        <PasswordInput
-                                            label="パスワード (任意、トークン未使用時)"
+                                        <Group grow>
+                                            <TextInput
+                                                label="ユーザー名 (任意)"
+                                                size="lg"
+                                                radius="lg"
+                                                placeholder="username"
+                                                key={form.key('username')}
+                                                {...form.getInputProps('username')}
+                                                disabled={loading}
+                                            />
+                                            <PasswordInput
+                                                label="パスワード (任意)"
+                                                size="lg"
+                                                radius="lg"
+                                                placeholder="password"
+                                                key={form.key('password')}
+                                                {...form.getInputProps('password')}
+                                                disabled={loading}
+                                                autoComplete="current-password"
+                                            />
+                                        </Group>
+                                        <TextInput
+                                            label="トークン (任意)"
+                                            description="API Token を使用する場合に入力"
                                             size="lg"
                                             radius="lg"
-                                            placeholder="password"
-                                            key={form.key('password')}
-                                            {...form.getInputProps('password')}
+                                            placeholder="pypi-xxxxxxxxxxxx"
+                                            key={form.key('token')}
+                                            {...form.getInputProps('token')}
                                             disabled={loading}
-                                            autoComplete="current-password"
                                         />
-                                    </Group>
+                                        <Checkbox
+                                            label="すでに存在する場合はスキップ (--skip-existing)"
+                                            key={form.key('skipExisting')}
+                                            {...form.getInputProps('skipExisting', { type: 'checkbox' })}
+                                            disabled={loading}
+                                        />
+                                        <FileInput
+                                            label="信頼済み証明書 (任意)"
+                                            description="自己署名や社内CAの場合は PEM 形式の証明書を指定してください"
+                                            placeholder=".pem / .crt"
+                                            size="lg"
+                                            radius="lg"
+                                            key={form.key('caCert')}
+                                            value={form.getValues().caCert || null}
+                                            onChange={(file) => form.setFieldValue('caCert', file)}
+                                            disabled={loading}
+                                            accept={'.pem,.crt,.cer'}
+                                            clearable
+                                        />
+                                    </Stack>
                                 </Stack>
                             </Accordion.Panel>
                         </Accordion.Item>
@@ -371,7 +368,13 @@ export function UploadPane() {
 
                     <Dropzone
                         onDrop={(files) => form.setFieldValue('files', files)}
-                        accept={["application/x-tar", "application/gzip", "application/x-compressed", "application/octet-stream"]}
+                        accept={{
+                            "application/zip": [".zip", ".whl"],
+                            "application/vnd.python.wheel": [".whl"],
+                            "application/octet-stream": [".whl"],
+                            "application/x-tar": [".tar.gz"],
+                            "application/gzip": [".tar.gz"]
+                        }}
                         radius="lg"
                         p="xl"
                         disabled={loading}
@@ -390,11 +393,11 @@ export function UploadPane() {
                             </Group>
                             <Text ta="center" fw={700} fz="lg" mt="xl">
                                 <Dropzone.Accept>ここにファイルをドロップ</Dropzone.Accept>
-                                <Dropzone.Idle>npm バンドルをアップロード</Dropzone.Idle>
+                                <Dropzone.Idle>.whl/.tar.gz/.zip をアップロード</Dropzone.Idle>
                                 <Dropzone.Reject>対応していないファイルです</Dropzone.Reject>
                             </Text>
                             <Text ta="center" c="dimmed">
-                                `.tar` / `.tgz` 形式のファイルを選択してください
+                                ビルド済みの Wheel またはソースディストリビューションを選択してください
                             </Text>
                         </div>
                     </Dropzone>

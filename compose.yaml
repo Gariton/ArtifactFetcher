@@ -1,6 +1,8 @@
 services:
-  ArtifactFetcher:
-    image: library/node:24.5
+  artifactfetcher:
+    build:
+      context: .
+      target: base
     container_name: ArtifactFetcher_develop
     tty: true
     working_dir: /app
@@ -10,5 +12,8 @@ services:
       - ${KEY}:/etc/pki/tls/private/auth.key
     ports:
       - "${PORT}:3000"
-    command: sh -c "npm install && npm run dev"
-    restart: always
+    command: |
+      sh -lc "
+        (npm ci || npm install) && npm run dev
+      "
+    restart: unless-stopped

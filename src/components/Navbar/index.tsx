@@ -10,13 +10,19 @@ export const AppNavbar = () => {
                 className={classes.link}
                 href="/docker"
             >
-                Docker
+                docker
             </Anchor>
             <Anchor
                 className={classes.link}
                 href="/npm"
             >
                 npm
+            </Anchor>
+            <Anchor
+                className={classes.link}
+                href="/pip"
+            >
+                pip
             </Anchor>
             <Anchor
                 className={classes.link}

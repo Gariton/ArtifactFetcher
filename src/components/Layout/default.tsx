@@ -1,9 +1,11 @@
 'use client';
 import { Text, AppShell, Container, Flex, Center } from "@mantine/core";
+import { Notifications } from "@mantine/notifications";
 import { ReactNode } from "react";
 
 import "@mantine/core/styles.css";
 import "@mantine/dropzone/styles.css";
+import "@mantine/notifications/styles.css";
 import { AppHeader } from "@/components/Header";
 import { useDisclosure } from "@mantine/hooks";
 import { AppNavbar } from "@/components/Navbar";
@@ -13,7 +15,9 @@ export const DefalutLayout = ({
 }: {children: ReactNode}) => {
     const [opened, {toggle}] = useDisclosure(false);
     return (
-        <AppShell
+        <>
+            <Notifications position="top-right" />
+            <AppShell
             header={{
                 height: 60
             }}
@@ -62,6 +66,7 @@ export const DefalutLayout = ({
                     </Center>
                 </Flex>
             </AppShell.Main>
-        </AppShell>
+            </AppShell>
+        </>
     );
 }

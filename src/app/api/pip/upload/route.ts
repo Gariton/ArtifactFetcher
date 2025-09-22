@@ -44,26 +44,35 @@ export async function POST(req: NextRequest) {
     const files: Array<{ name: string; tmpPath: string; index: number }> = [];
     const saves: Promise<void>[] = [];
     let index = 0;
+    let certificatePath: string | undefined;
 
     const finished = new Promise<void>((resolve, reject) => {
-        bb.on('file', (_field, fileStream, info) => {
-            const safeName = path.basename(info.filename || `package-${Date.now()}`);
-            const tmpPath = path.join(tmpRoot, `${Date.now()}-${index}-${safeName}`);
+        bb.on('file', (field, fileStream, info) => {
+            const safeName = path.basename(info.filename || `${field}-${Date.now()}`);
+            const isCertificate = field === 'caCert';
+            const sanitized = safeName.replace(/[^a-zA-Z0-9_.-]/g, '_');
+            const uniqueSuffix = `${Date.now()}-${isCertificate ? 'cert' : index}`;
+            const tmpPath = path.join(tmpRoot, `${uniqueSuffix}-${sanitized}`);
             const ws = fs.createWriteStream(tmpPath);
-            const currentIndex = index++;
-            files.push({ name: safeName, tmpPath, index: currentIndex });
 
-            bus.emitEvent({ type: 'item-start', scope: 'pip-upload', index: currentIndex, digest: safeName });
+            if (isCertificate) {
+                certificatePath = tmpPath;
+            } else {
+                const currentIndex = index++;
+                files.push({ name: safeName, tmpPath, index: currentIndex });
+                bus.emitEvent({ type: 'item-start', scope: 'pip-upload', index: currentIndex, digest: safeName });
 
-            let received = 0;
-            fileStream.on('data', (chunk: Buffer | string) => {
-                if (typeof chunk === 'string') chunk = Buffer.from(chunk);
-                received += chunk.length;
-                bus.emitEvent({ type: 'item-progress', scope: 'pip-upload', index: currentIndex, received });
-            });
-            fileStream.on('end', () => {
-                bus.emitEvent({ type: 'item-done', scope: 'pip-upload', index: currentIndex });
-            });
+                let received = 0;
+                fileStream.on('data', (chunk: Buffer | string) => {
+                    if (typeof chunk === 'string') chunk = Buffer.from(chunk);
+                    received += chunk.length;
+                    bus.emitEvent({ type: 'item-progress', scope: 'pip-upload', index: currentIndex, received });
+                });
+                fileStream.on('end', () => {
+                    bus.emitEvent({ type: 'item-done', scope: 'pip-upload', index: currentIndex });
+                });
+            }
+
             fileStream.on('error', reject);
             ws.on('error', reject);
             fileStream.pipe(ws);
@@ -102,6 +111,7 @@ export async function POST(req: NextRequest) {
                     password,
                     token,
                     skipExisting,
+                    certPath: certificatePath,
                 });
                 bus.emitEvent({ type: 'item-done', scope: 'pip-publish', index: file.index });
             } catch (err: any) {

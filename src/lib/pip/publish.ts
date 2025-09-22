@@ -4,6 +4,7 @@ const PYTHON_BIN = process.env.PIP_PYTHON_BIN || 'python3';
 
 type RunOptions = {
     forwardOutput?: boolean;
+    env?: Record<string, string | undefined>;
 };
 
 type RunResult = {
@@ -12,13 +13,14 @@ type RunResult = {
     stderr: string;
 };
 
-function runPython(args: string[], { forwardOutput = false }: RunOptions = {}): Promise<RunResult> {
+function runPython(args: string[], { forwardOutput = false, env }: RunOptions = {}): Promise<RunResult> {
     return new Promise<RunResult>((resolve, reject) => {
         const child = spawn(PYTHON_BIN, args, {
             stdio: ['ignore', 'pipe', 'pipe'],
             env: {
                 ...process.env,
                 TWINE_NON_INTERACTIVE: '1',
+                ...(env || {}),
             },
         });
         let stdout = '';
@@ -55,9 +57,10 @@ export type PipUploadOptions = {
     token?: string;
     skipExisting?: boolean;
     extraArgs?: string[];
+    certPath?: string;
 };
 
-export async function uploadDistribution({ filePath, repositoryUrl, username, password, token, skipExisting = false, extraArgs = [] }: PipUploadOptions) {
+export async function uploadDistribution({ filePath, repositoryUrl, username, password, token, skipExisting = false, extraArgs = [], certPath }: PipUploadOptions) {
     if (!repositoryUrl) throw new Error('repositoryUrl is required');
     if (!filePath) throw new Error('filePath is required');
 
@@ -71,9 +74,13 @@ export async function uploadDistribution({ filePath, repositoryUrl, username, pa
         if (username) args.push('-u', username);
         if (password) args.push('-p', password);
     }
+    if (certPath) {
+        args.push('--cert', certPath);
+    }
     if (extraArgs.length) args.push(...extraArgs);
 
-    const result = await runPython(args, { forwardOutput: true });
+    const extraEnv = certPath ? { REQUESTS_CA_BUNDLE: certPath } : undefined;
+    const result = await runPython(args, { forwardOutput: true, env: extraEnv });
     if (result.code !== 0) {
         throw new Error((result.stderr || result.stdout || '').trim() || 'twine upload failed');
     }

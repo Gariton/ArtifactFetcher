@@ -92,7 +92,11 @@ async function runPipDownload(destDir: string, args: string[], bus: ProgressBus)
 
     function ensureEntry(filename: string, size?: number) {
         const key = path.basename(filename);
-        if (entries.has(key)) return entries.get(key)!;
+        if (entries.has(key)) {
+            const existing = entries.get(key)!;
+            if (size && !existing.size) existing.size = size;
+            return existing;
+        }
         const entry: DownloadEntry = { index: entries.size, filename: key, size };
         entries.set(key, entry);
         bus.emitEvent({ type: 'item-start', scope: 'pip-download', index: entry.index, digest: key, total: size });
@@ -101,10 +105,13 @@ async function runPipDownload(destDir: string, args: string[], bus: ProgressBus)
 
     async function markDone(filename: string, size?: number) {
         const key = path.basename(filename);
+        if (key.toLowerCase().endsWith('.metadata')) return;
         const entry = ensureEntry(key, size);
         const resolvedSize = size ?? entry.size ?? (await fs.promises.stat(path.join(destDir, key)).then((s) => s.size).catch(() => undefined));
-        if (resolvedSize)
+        if (resolvedSize) {
+            entry.size = resolvedSize;
             bus.emitEvent({ type: 'item-progress', scope: 'pip-download', index: entry.index, received: resolvedSize, total: resolvedSize });
+        }
         bus.emitEvent({ type: 'item-done', scope: 'pip-download', index: entry.index });
     }
 
@@ -117,6 +124,7 @@ async function runPipDownload(destDir: string, args: string[], bus: ProgressBus)
         let match = line.match(/^Downloading\s+([^\s]+)\s+\(([^)]+)\)/i);
         if (match) {
             const filename = match[1];
+            if (filename.toLowerCase().endsWith('.metadata')) return;
             const size = parseSize(match[2]);
             ensureEntry(filename, size);
             return;
@@ -124,6 +132,7 @@ async function runPipDownload(destDir: string, args: string[], bus: ProgressBus)
         match = line.match(/^Using cached\s+([^\s]+)\s+\(([^)]+)\)/i);
         if (match) {
             const filename = match[1];
+            if (filename.toLowerCase().endsWith('.metadata')) return;
             const size = parseSize(match[2]);
             const entry = ensureEntry(filename, size);
             bus.emitEvent({ type: 'item-progress', scope: 'pip-download', index: entry.index, received: size ?? 0, total: size });

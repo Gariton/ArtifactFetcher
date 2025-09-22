@@ -2,7 +2,7 @@
 
 import { PackageUploadModal } from '@/components/PackageUpload/Modal';
 import { ProgressEvent } from '@/lib/progressBus';
-import { Alert, Button, Checkbox, Group, PasswordInput, Space, Stack, Text, TextInput } from '@mantine/core';
+import { Accordion, Alert, Button, Checkbox, FileInput, Group, PasswordInput, Space, Stack, Text, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { Dropzone } from '@mantine/dropzone';
@@ -10,6 +10,7 @@ import { IconCloudCog, IconCloudUpload, IconDownload, IconX } from '@tabler/icon
 import { nanoid } from 'nanoid';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileItem } from '@/components/Upload/FileItem';
+import { getEnvironmentVar } from '@/components/actions';
 
 type Status = 'idle' | 'running' | 'done' | 'error';
 
@@ -35,6 +36,7 @@ type FormValues = {
     password: string;
     token: string;
     skipExisting: boolean;
+    caCert: File | null;
 };
 
 const FLUSH_INTERVAL = 250;
@@ -81,6 +83,7 @@ export function UploadPane({ env }: { env: EnvProps }) {
             password: env.PIP_UPLOAD_PASSWORD || '',
             token: env.PIP_UPLOAD_TOKEN || '',
             skipExisting: /^(1|true|on|yes)$/i.test(env.PIP_UPLOAD_SKIP_EXISTING || ''),
+            caCert: null,
         },
         validate: {
             repositoryUrl: (value) => (value.trim() === '' ? 'レジストリURLを入力してください' : null),
@@ -224,6 +227,9 @@ export function UploadPane({ env }: { env: EnvProps }) {
         for (const file of values.files) {
             fd.append('files', file, file.name);
         }
+        if (values.caCert) {
+            fd.append('caCert', values.caCert, values.caCert.name);
+        }
 
         const params = new URLSearchParams({
             jobId: newJobId,
@@ -256,6 +262,11 @@ export function UploadPane({ env }: { env: EnvProps }) {
     });
 
     useEffect(() => {
+        getEnvironmentVar().then(v => {
+            form.setFieldValue("repositoryUrl", v.PIP_UPLOAD_REGISTRY);
+            form.setFieldValue("username", v.PIP_UPLOAD_USERNAME);
+            form.setFieldValue("password", v.PIP_UPLOAD_PASSWORD);
+        });
         return () => {
             if (flushTimerRef.current) {
                 clearTimeout(flushTimerRef.current);
@@ -273,61 +284,87 @@ export function UploadPane({ env }: { env: EnvProps }) {
 
             <form onSubmit={onSubmit}>
                 <Stack>
-                    <Stack gap="lg" p="lg" style={{ border: '1px solid var(--mantine-color-gray-3)', borderRadius: 'var(--mantine-radius-lg)' }}>
-                        <Group gap="xs">
-                            <IconCloudCog size="1em" />
-                            <Text fw={600}>アップロード先設定</Text>
-                        </Group>
-                        <Stack>
-                            <TextInput
-                                label="レジストリURL"
-                                description="例: https://nexus.example.com/repository/pypi-hosted/"
-                                size="lg"
-                                radius="lg"
-                                placeholder="https://pypi.example.com/"
-                                key={form.key('repositoryUrl')}
-                                {...form.getInputProps('repositoryUrl')}
-                                disabled={loading}
-                            />
-                            <Group grow>
-                                <TextInput
-                                    label="ユーザー名 (任意)"
-                                    size="lg"
-                                    radius="lg"
-                                    placeholder="username"
-                                    key={form.key('username')}
-                                    {...form.getInputProps('username')}
-                                    disabled={loading}
-                                />
-                                <PasswordInput
-                                    label="パスワード (任意)"
-                                    size="lg"
-                                    radius="lg"
-                                    placeholder="password"
-                                    key={form.key('password')}
-                                    {...form.getInputProps('password')}
-                                    disabled={loading}
-                                    autoComplete="current-password"
-                                />
-                            </Group>
-                            <TextInput
-                                label="トークン (任意)"
-                                description="API Token を使用する場合に入力"
-                                size="lg"
-                                radius="lg"
-                                placeholder="pypi-xxxxxxxxxxxx"
-                                key={form.key('token')}
-                                {...form.getInputProps('token')}
-                                disabled={loading}
-                            />
-                            <Checkbox
-                                label="すでに存在する場合はスキップ (--skip-existing)"
-                                key={form.key('skipExisting')}
-                                {...form.getInputProps('skipExisting', { type: 'checkbox' })}
-                                disabled={loading}
-                            />
-                        </Stack>
-                    </Stack>
+                    <Accordion
+                        variant="separated"
+                        radius="lg"
+                    >
+                        <Accordion.Item
+                            value="upload_settings"
+                            key="upload_settings"
+                        >
+                            <Accordion.Control
+                                icon={<IconCloudCog size="1em"/>}
+                            >
+                                アップロード先設定
+                            </Accordion.Control>
+                            <Accordion.Panel>
+                                <Stack>
+                                    <Stack>
+                                        <TextInput
+                                            label="レジストリURL"
+                                            description="例: https://nexus.example.com/repository/pypi-hosted/"
+                                            size="lg"
+                                            radius="lg"
+                                            placeholder="https://pypi.example.com/"
+                                            key={form.key('repositoryUrl')}
+                                            {...form.getInputProps('repositoryUrl')}
+                                            disabled={loading}
+                                        />
+                                        <Group grow>
+                                            <TextInput
+                                                label="ユーザー名 (任意)"
+                                                size="lg"
+                                                radius="lg"
+                                                placeholder="username"
+                                                key={form.key('username')}
+                                                {...form.getInputProps('username')}
+                                                disabled={loading}
+                                            />
+                                            <PasswordInput
+                                                label="パスワード (任意)"
+                                                size="lg"
+                                                radius="lg"
+                                                placeholder="password"
+                                                key={form.key('password')}
+                                                {...form.getInputProps('password')}
+                                                disabled={loading}
+                                                autoComplete="current-password"
+                                            />
+                                        </Group>
+                                        <TextInput
+                                            label="トークン (任意)"
+                                            description="API Token を使用する場合に入力"
+                                            size="lg"
+                                            radius="lg"
+                                            placeholder="pypi-xxxxxxxxxxxx"
+                                            key={form.key('token')}
+                                            {...form.getInputProps('token')}
+                                            disabled={loading}
+                                        />
+                                        <Checkbox
+                                            label="すでに存在する場合はスキップ (--skip-existing)"
+                                            key={form.key('skipExisting')}
+                                            {...form.getInputProps('skipExisting', { type: 'checkbox' })}
+                                            disabled={loading}
+                                        />
+                                        <FileInput
+                                            label="信頼済み証明書 (任意)"
+                                            description="自己署名や社内CAの場合は PEM 形式の証明書を指定してください"
+                                            placeholder=".pem / .crt"
+                                            size="lg"
+                                            radius="lg"
+                                            key={form.key('caCert')}
+                                            value={form.getValues().caCert || null}
+                                            onChange={(file) => form.setFieldValue('caCert', file)}
+                                            disabled={loading}
+                                            accept={'.pem,.crt,.cer'}
+                                            clearable
+                                        />
+                                    </Stack>
+                                </Stack>
+                            </Accordion.Panel>
+                        </Accordion.Item>
+                    </Accordion>
 
                     <Dropzone
                         onDrop={(files) => form.setFieldValue('files', files)}

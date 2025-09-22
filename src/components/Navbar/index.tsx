@@ -10,7 +10,7 @@ export const AppNavbar = () => {
                 className={classes.link}
                 href="/docker"
             >
-                Docker
+                docker
             </Anchor>
             <Anchor
                 className={classes.link}

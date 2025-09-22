@@ -11,6 +11,7 @@ import { nanoid } from "nanoid";
 import { FileItem } from "@/components/Upload/FileItem";
 import { UploadModal } from "@/components/Upload/Modal";
 import { getEnvironmentVar } from "@/components/actions";
+import { useRetryableEventSource } from "@/lib/useRetryableEventSource";
 
 type FormType = {
     files: File[];
@@ -52,7 +53,7 @@ export function UploadPane() {
             setPerLayerSnap(new Map(perLayerRef.current.entries()));
         }, FLUSH_INTERVAL);
     }, []);
-    const esRef = useRef<EventSource | null>(null);
+    const stopSseRef = useRef<() => void>(() => {});
     const [env, setEnv] = useState<EnvType>({
         DOCKER_UPLOAD: "yes",
         DOCKER_UPLOAD_REGISTRY: "",
@@ -60,13 +61,119 @@ export function UploadPane() {
         DOCKER_UPLOAD_PASSWORD: "",
     });
     
+    const handleSseMessage = useCallback((event: MessageEvent) => {
+        try {
+            const data = JSON.parse(event.data) as ProgressEvent;
+            scheduleFlush();
+
+            if (data.type === "item-start" && data.scope == "upload") {
+                perFileRef.current = {
+                    ...perFileRef.current,
+                    [data.index]: {
+                        ...perFileRef.current[data.index],
+                        received: 0,
+                        total: data.total,
+                        status: "processing"
+                    }
+                }
+            }
+            if (data.type === "item-progress" && data.scope == "upload") {
+                perFileRef.current = {
+                    ...perFileRef.current,
+                    [data.index]: {
+                        ...perFileRef.current[data.index],
+                        received: data.received,
+                        status: "processing"
+                    }
+                }
+            }
+            if (data.type === "item-done" && data.scope == "upload") {
+                perFileRef.current = {
+                    ...perFileRef.current,
+                    [data.index]: {
+                        ...perFileRef.current[data.index],
+                        received: perFileRef.current[data.index]?.total ?? 0,
+                        status: "done"
+                    }
+                }
+            }
+
+            if (data.type === 'repo-tag-resolved') {
+                open();
+                data.items.map(({repository, tag}) => {
+                    manifests.set(`${repository}@${tag}`, []);
+                    perLayerRef.current.set(`${repository}@${tag}`, {});
+                });
+            }
+            if (data.type === 'manifest-resolved') {
+                if (data.manifestName) {
+                    manifests.set(data.manifestName, data.items as Layer[]);
+                    perLayerRef.current.set(data.manifestName, data.items.map(() => ({
+                        received: 0,
+                        total: 0,
+                        status: "process"
+                    })));
+                }
+            }
+            if (data.type === 'item-start' && data.scope == "push-item") {
+                if (data.manifestName) {
+                    const record = perLayerRef.current.get(data.manifestName) ?? {};
+                    perLayerRef.current.set(data.manifestName, {...record, [data.index]: {received: 0, total: data.total, status: "process"}});
+                }
+            }
+            if (data.type === 'item-progress' && data.scope == "push-item") {
+                if (data.manifestName) {
+                    const record = perLayerRef.current.get(data.manifestName) ?? {};
+                    perLayerRef.current.set(data.manifestName, {...record, [data.index]: {received: data.received, total: data.total, status: "process"}});
+                }
+            }
+            if (data.type === 'item-done' && data.scope == "push-item") {
+                if (data.manifestName) {
+                    const record = perLayerRef.current.get(data.manifestName) ?? {};
+                    perLayerRef.current.set(data.manifestName, {...record, [data.index]: {...record[data.index], status: "done"}});
+                }
+            }
+            if (data.type === 'item-skip' && data.scope == 'push-item') {
+                if (data.manifestName) {
+                    const record = perLayerRef.current.get(data.manifestName) ?? {};
+                    perLayerRef.current.set(data.manifestName, {...record, [data.index]: {received: 100, total: 100, status: "skipped"}})
+                }
+            }
+            if (data.type === 'error') {
+                stopSseRef.current();
+                setLoading(false);
+            }
+            if (data.type === 'done') {
+                stopSseRef.current();
+                setLoading(false);
+            }
+        } catch (err) {
+            console.error("SSE payload parse failed", err);
+        }
+    }, [scheduleFlush, manifests, open]);
+
+    const { start: startSse, stop: stopSse } = useRetryableEventSource({
+        onMessage: handleSseMessage,
+        onOpen: () => {
+            console.debug("SSE open");
+        },
+        onError: (event) => {
+            console.error("SSE error", event);
+        },
+        notificationId: "docker-upload-sse",
+        notificationLabel: "Dockerアップロード進捗"
+    });
+
+    useEffect(() => {
+        stopSseRef.current = stopSse;
+    }, [stopSse]);
+
     const reset = () => {
         setJobId(null);
         manifests.clear();
         perLayerRef.current = new Map();
         setPerLayerSnap(new Map());
-        esRef.current?.close();
-        esRef.current = null;
+        stopSse();
     }
     const form = useForm<FormType>({
         mode: "uncontrolled",
@@ -97,110 +204,16 @@ export function UploadPane() {
                 total: f.size,
                 status: "waiting"
             }));
-            // フロントからSSEを張ってアップロード状況も関ししたい
-            const jobId = nanoid();
-            const es = new EventSource(`/api/build/progress?jobId=${jobId}`);
-            esRef.current = es;
-            es.onopen = () => {
-                console.debug("SSE open");
-            }
-            es.onerror = (e) => {
-                console.error("SSE error", e);
-            }
-            es.onmessage = (ev) => {
-                const data = JSON.parse(ev.data) as ProgressEvent;
-                scheduleFlush();
-                // upload files
-                if (data.type === "item-start" && data.scope == "upload") {
-                    perFileRef.current = {
-                        ...perFileRef.current,
-                        [data.index]: {
-                            ...perFileRef.current[data.index],
-                            received: 0,
-                            total: data.total,
-                            status: "processing"
-                        }
-                    }
-                }
-                if (data.type === "item-progress" && data.scope == "upload") {
-                    perFileRef.current = {
-                        ...perFileRef.current,
-                        [data.index]: {
-                             ...perFileRef.current[data.index],
-                            received: data.received,
-                            status: "processing"
-                        }
-                    }
-                }
-                if (data.type === "item-done" && data.scope == "upload") {
-                    perFileRef.current = {
-                        ...perFileRef.current,
-                        [data.index]: {
-                            ...perFileRef.current[data.index],
-                            received: perFileRef.current[data.index]?.total ?? 0,
-                            status: "done"
-                        }
-                    }
-                }
-
-                // push progress
-                if (data.type === 'repo-tag-resolved') {
-                    open();
-                    data.items.map(({repository, tag}) => {
-                        manifests.set(`${repository}@${tag}`, []);
-                        perLayerRef.current.set(`${repository}@${tag}`, {});
-                    });
-                }
-                if (data.type === 'manifest-resolved') {
-                    if (data.manifestName) {
-                        manifests.set(data.manifestName, data.items as Layer[]);
-                        perLayerRef.current.set(data.manifestName, data.items.map(() => ({
-                            received: 0,
-                            total: 0,
-                            status: "process"
-                        })));
-                    }
-                }
-                if (data.type === 'item-start' && data.scope == "push-item") {
-                    if (data.manifestName) {
-                        const record = perLayerRef.current.get(data.manifestName) ?? {};
-                        perLayerRef.current.set(data.manifestName, {...record, [data.index]: {received: 0, total: data.total, status: "process"}});
-                    }
-                }
-                if (data.type === 'item-progress' && data.scope == "push-item") {
-                    if (data.manifestName) {
-                        const record = perLayerRef.current.get(data.manifestName) ?? {};
-                        perLayerRef.current.set(data.manifestName, {...record, [data.index]: {received: data.received, total: data.total, status: "process"}});
-                    }
-                }
-                if (data.type === 'item-done' && data.scope == "push-item") {
-                    if (data.manifestName) {
-                        const record = perLayerRef.current.get(data.manifestName) ?? {};
-                        perLayerRef.current.set(data.manifestName, {...record, [data.index]: {...record[data.index], status: "done"}});
-                    }
-                }
-                if (data.type === 'item-skip' && data.scope == 'push-item') {
-                    if (data.manifestName) {
-                        const record = perLayerRef.current.get(data.manifestName) ?? {};
-                        perLayerRef.current.set(data.manifestName, {...record, [data.index]: {received: 100, total: 100, status: "skipped"}})
-                    }
-                }
-                // if (data.type === 'stage') setStatus(data.stage);
-                if (data.type === 'error') {
-                    es.close();
-                    setLoading(false);
-                }
-                if (data.type === 'done') {
-                    es.close();
-                    setLoading(false);
-                }
-            }
+            // フロントからSSEを張ってアップロード状況も監視したい
+            const newJobId = nanoid();
+            setJobId(newJobId);
+            startSse(`/api/build/progress?jobId=${newJobId}`);
 
             const fd = new FormData();
             for (const f of Array.from(values.files)) fd.append('files', f, f.name);
 
             const qs = new URLSearchParams({
-                jobId,
+                jobId: newJobId,
                 registry: values.registry,
                 repository: values.repo,
                 insecureTLS: "true",
@@ -217,10 +230,14 @@ export function UploadPane() {
             });
 
             if (!res.ok) {
+                stopSse();
+                setLoading(false);
                 alert('push start failed');
                 return;
             }
         } catch (e: any) {
+            stopSse();
+            setLoading(false);
             setError(e.message || "アップロードに失敗しました")
         }
     };
@@ -239,9 +256,9 @@ export function UploadPane() {
         });
         return () => {
             if (flushTimerRef.current) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null; }
-            esRef.current?.close();
+            stopSseRef.current();
         };
-    }, []);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <div>

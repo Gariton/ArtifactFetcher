@@ -11,6 +11,7 @@ import { ProgressEvent } from '@/lib/progressBus';
 import { FileItem } from '@/components/Upload/FileItem';
 import { PackageUploadModal } from '@/components/PackageUpload/Modal';
 import { getEnvironmentVar } from '@/components/actions';
+import { useRetryableEventSource } from '@/lib/useRetryableEventSource';
 
 const FLUSH_INTERVAL = 250;
 
@@ -35,6 +36,14 @@ export function UploadPane() {
     const [perFileSnap, setPerFileSnap] = useState<Record<number, FileProgressState>>({});
     const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
     const esRef = useRef<EventSource | null>(null);
+    const stopSseRef = useRef<() => void>(() => {});
+    const [env, setEnv] = useState({
+        NPM_UPLOAD: "yes",
+        NPM_UPLOAD_REGISTORY: "",
+        NPM_UPLOAD_AUTH_TOKEN: "",
+        NPM_UPLOAD_USERNAME: "",
+        NPM_UPLOAD_PASSWORD: "",
+    });
 
     const scheduleFlush = useCallback(() => {
         if (flushTimerRef.current) return;
@@ -53,8 +62,7 @@ export function UploadPane() {
             clearTimeout(flushTimerRef.current);
             flushTimerRef.current = null;
         }
-        esRef.current?.close();
-        esRef.current = null;
+        stopSseRef.current();
     }, []);
 
     const form = useForm<FormValues>({
@@ -74,6 +82,9 @@ export function UploadPane() {
     const handleSseEvent = useCallback((data: ProgressEvent) => {
         if (data.type === 'stage') {
             setStatus('running');
+            if (data.stage === 'npm-publish-start') {
+                open();
+            }
             return;
         }
         if (data.type === 'item-start' && data.scope === 'npm-upload') {
@@ -139,12 +150,32 @@ export function UploadPane() {
             scheduleFlush();
             return;
         }
+        if (data.type === 'item-error' && data.scope === 'npm-publish') {
+            const prev = perFileRef.current[data.index];
+            perFileRef.current = {
+                ...perFileRef.current,
+                [data.index]: {
+                    ...prev,
+                    status: 'error',
+                    received: prev?.received ?? 0,
+                    total: prev?.total,
+                },
+            };
+            setError(data.message || 'アップロードに失敗しました');
+            scheduleFlush();
+            return;
+        }
+        if (data.type === 'error-summary') {
+            const failedNames = data.failures.map((f) => f.name).join(', ');
+            setError(failedNames ? `一部のパッケージでエラー: ${failedNames}` : '一部パッケージでエラーが発生しました');
+            scheduleFlush();
+            return;
+        }
         if (data.type === 'done') {
             setStatus('done');
             setLoading(false);
             scheduleFlush();
-            esRef.current?.close();
-            esRef.current = null;
+            stopSseRef.current();
             return;
         }
         if (data.type === 'error') {
@@ -155,11 +186,35 @@ export function UploadPane() {
                 Object.entries(perFileRef.current).map(([key, value]) => [key, { ...value, status: value.status === 'published' ? 'published' : 'error' }])
             ) as Record<number, FileProgressState>;
             scheduleFlush();
-            esRef.current?.close();
-            esRef.current = null;
+            stopSseRef.current();
             return;
         }
-    }, [scheduleFlush]);
+    }, [scheduleFlush, open]);
+
+    const handleSseMessage = useCallback((event: MessageEvent) => {
+        try {
+            const payload = JSON.parse(event.data) as ProgressEvent;
+            handleSseEvent(payload);
+        } catch (err) {
+            console.error('Failed to parse SSE payload', err);
+        }
+    }, [handleSseEvent]);
+
+    const { start: startSse, stop: stopSse } = useRetryableEventSource({
+        onMessage: handleSseMessage,
+        onOpen: () => {
+            console.debug('SSE open');
+        },
+        onError: (event) => {
+            console.error('SSE error', event);
+        },
+        notificationId: 'npm-upload-sse',
+        notificationLabel: 'npmアップロード進捗'
+    });
+
+    useEffect(() => {
+        stopSseRef.current = stopSse;
+    }, [stopSse]);
 
     const onSubmit = form.onSubmit(async (values) => {
         if (values.files.length === 0) {
@@ -180,6 +235,7 @@ export function UploadPane() {
         setLoading(true);
         setError(null);
         resetStreams();
+        close();
 
         const newJobId = nanoid();
         setJobId(newJobId);
@@ -188,21 +244,7 @@ export function UploadPane() {
             values.files.map((file, idx) => [idx, { received: 0, total: file.size, status: 'waiting' } as FileProgressState])
         );
         setPerFileSnap({ ...perFileRef.current });
-        open();
-
-        const es = new EventSource(`/api/build/progress?jobId=${newJobId}`);
-        esRef.current = es;
-        es.onmessage = (ev) => {
-            try {
-                const payload = JSON.parse(ev.data) as ProgressEvent;
-                handleSseEvent(payload);
-            } catch (e) {
-                console.error('Failed to parse SSE payload', e);
-            }
-        };
-        es.onerror = (err) => {
-            console.error('SSE error', err);
-        };
+        startSse(`/api/build/progress?jobId=${newJobId}`);
 
         const fd = new FormData();
         for (const file of values.files) {
@@ -233,8 +275,7 @@ export function UploadPane() {
             setLoading(false);
             setStatus('error');
             setError(e?.message || 'アップロードに失敗しました');
-            es.close();
-            esRef.current = null;
+            stopSse();
         }
     });
 
@@ -249,9 +290,9 @@ export function UploadPane() {
                 clearTimeout(flushTimerRef.current);
                 flushTimerRef.current = null;
             }
-            esRef.current?.close();
+            stopSseRef.current();
         };
-    }, []);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <div>

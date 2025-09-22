@@ -38,6 +38,8 @@ export type ProgressEvent =
     | { type: 'item-progress'; index: number; scope?: string; manifestName?: string; received: number; total?: number }
     | { type: 'item-done'; scope?: string; manifestName?: string; index: number }
     | { type: 'item-skip'; scope?: string; manifestName?: string; index: number; reason: string;}
+    | { type: 'item-error'; scope?: string; manifestName?: string; index: number; message: string }
+    | { type: 'error-summary'; successes: Array<{ name: string; index: number }>; failures: Array<{ name: string; index: number; error: string }> }
     | { type: 'tar-writing' }
     | { type: 'done'; filename: string }
     | { type: 'error'; message: string };

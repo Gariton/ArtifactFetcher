@@ -45,7 +45,7 @@ export default function PipPage() {
         <div>
             <Group justify="space-between">
                 <Title>pip package</Title>
-                <ThemeIcon variant="transparent" size={60} color="blue">
+                <ThemeIcon variant="transparent" size={60} color="violet">
                     <IconBrandPython style={{ width: '70%', height: '70%' }} stroke={1.3} />
                 </ThemeIcon>
             </Group>

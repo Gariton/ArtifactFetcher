@@ -1,54 +1,35 @@
-import { AnchorCard } from "@/components/AnchorCard";
-import { Center, Container, Space, Stack, ThemeIcon, Title } from "@mantine/core";
+'use client';
+import { ManagerCatalog, type ManagerEntry } from "@/components/ManagerCatalog";
+import { Center, Container, Space, Stack, Title } from "@mantine/core";
 import { IconBrandDocker, IconBrandNpm, IconBrandPython } from "@tabler/icons-react";
 import Image from "next/image";
 
-const apps = [
+const managers: ManagerEntry[] = [
     {
-        title: "Docker Image",
+        id: "docker",
+        name: "Docker Image",
         description: "Docker HUBのAPIを使用して安全かつ高速にDocker Imageをtarball形式でダウンロードすることができます。",
         href: "/docker",
-        icon: <ThemeIcon
-            variant="transparent"
-            size={70}
-        >
-            <IconBrandDocker
-                style={{width: '70%', height: '70%'}}
-                stroke={1.3}
-            />
-        </ThemeIcon>
+        Icon: IconBrandDocker,
+        color: "blue",
     },
     {
-        title: "npm package",
+        id: "npm",
+        name: "npm package",
         description: "npm.jsの公式レジストリを使用してnpmのない環境でも依存関係を網羅したパッケージをダウンロードすることができます。",
         href: "/npm",
-        icon: <ThemeIcon
-            variant="transparent"
-            size={70}
-            color="red"
-        >
-            <IconBrandNpm
-                style={{width: '70%', height: '70%'}}
-                stroke={1.3}
-            />
-        </ThemeIcon>
+        Icon: IconBrandNpm,
+        color: "red",
     },
     {
-        title: "pip package",
+        id: "pip",
+        name: "pip package",
         description: "PyPI や社内レジストリから pip パッケージをまとめて取得し、任意のレジストリにアップロードできます。",
         href: "/pip",
-        icon: <ThemeIcon
-            variant="transparent"
-            size={70}
-            color="violet"
-        >
-            <IconBrandPython
-                style={{width: '70%', height: '70%'}}
-                stroke={1.3}
-            />
-        </ThemeIcon>
-    }
-]
+        Icon: IconBrandPython,
+        color: "violet",
+    },
+];
 
 export default function Home() {
     return (
@@ -72,12 +53,7 @@ export default function Home() {
             <Space h="xl" />
 
             <Stack>
-                {apps.map((app, i) => (
-                    <AnchorCard
-                        key={i}
-                        {...app}
-                    />
-                ))}
+                <ManagerCatalog entries={managers} />
             </Stack>
         </Container>
     );

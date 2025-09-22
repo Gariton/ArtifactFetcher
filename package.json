@@ -1,6 +1,6 @@
 {
     "name": "Downloader",
-    "version": "3.0.1",
+    "version": "4.0.0",
     "private": true,
     "scripts": {
         "dev": "next dev --turbopack --experimental-https --experimental-https-key=/etc/pki/tls/private/auth.key --experimental-https-cert=/etc/pki/tls/certs/auth.crt",

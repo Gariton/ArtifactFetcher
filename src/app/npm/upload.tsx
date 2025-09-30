@@ -430,7 +430,7 @@ export function UploadPane() {
                     </Accordion>
 
                     <Dropzone
-                        onDrop={(files) => form.setFieldValue('files', files)}
+                        onDrop={(files: File[]) => form.setFieldValue('files', files)}
                         accept={["application/x-tar", "application/gzip", "application/x-compressed", "application/octet-stream"]}
                         radius="lg"
                         p="xl"

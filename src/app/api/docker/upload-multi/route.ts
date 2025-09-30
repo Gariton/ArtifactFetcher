@@ -107,7 +107,9 @@ export async function POST(req: NextRequest) {
     if (files.length === 0) {
         return new Response(JSON.stringify({ error: 'no files' }), { status: 400 });
     }
-    
+
+    jobStore.set(jobId, { status: 'running' });
+
     (async () => {
         try {
             // 全体の件数を先に通知
@@ -135,37 +137,55 @@ export async function POST(req: NextRequest) {
 
             bus.emitEvent({ type: 'repo-tag-resolved', items: repoTags });
             
-            // 逐次または並列で push
-            let indexCounter = 0;
-            const runOne = async (f: { name: string; tmpPath: string }, repotag: RepoTag) => {
-                const idx = indexCounter++;
-                const { repository, tag } = repotag;
-                bus.emitEvent({ type: 'stage', stage: `push-start: ${f.name} -> ${repository}:${tag}` });
-                await pushImageToRegistry({
-                    registry: ctx.registry,
-                    repository,
-                    tag,
-                    sourceTarPath: f.tmpPath,
-                    username: ctx.username,
-                    password: ctx.password,
-                    insecureTLS: ctx.insecureTLS,
-                    bus,
-                });
-                bus.emitEvent({ type: 'item-done', index: idx });
-            };
+            const successes: Array<{ name: string; index: number }> = [];
+            const failures: Array<{ name: string; index: number; error: string }> = [];
 
-            for (let i=0; i<files.length; i++) {
-                await runOne(files[i], repoTags[i]);
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i]!;
+                const repotag = repoTags[i]!;
+                const { repository, tag } = repotag;
+                jobStore.set(jobId, { status: 'running', filename: file.name });
+                bus.emitEvent({ type: 'stage', stage: `push-start: ${file.name} -> ${repository}:${tag}` });
+                bus.emitEvent({ type: 'item-start', scope: 'push-image', index: i, digest: `${repository}:${tag}` });
+                try {
+                    await pushImageToRegistry({
+                        registry: ctx.registry,
+                        repository,
+                        tag,
+                        sourceTarPath: file.tmpPath,
+                        username: ctx.username,
+                        password: ctx.password,
+                        insecureTLS: ctx.insecureTLS,
+                        bus,
+                    });
+                    successes.push({ name: file.name, index: i });
+                    bus.emitEvent({ type: 'item-done', scope: 'push-image', index: i });
+                } catch (err: any) {
+                    const message = err?.message || 'push failed';
+                    failures.push({ name: file.name, index: i, error: message });
+                    bus.emitEvent({ type: 'item-error', scope: 'push-image', index: i, message });
+                }
             }
-            
-            jobStore.set(jobId, { status: 'done', filename: `pushed ${files.length} images` });
-            // お掃除
-            try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch {}
-            bus.emitEvent({ type: 'done', filename: `pushed ${files.length} images` });
-            
+
+            if (failures.length === files.length) {
+                const lastError = failures[failures.length - 1]?.error || 'failed';
+                jobStore.set(jobId, { status: 'error', error: lastError });
+                bus.emitEvent({ type: 'error', message: lastError });
+                return;
+            }
+
+            const summary = `pushed ${successes.length} images` + (failures.length ? `, ${failures.length} failed` : '');
+            jobStore.set(jobId, { status: failures.length ? 'error' : 'done', filename: summary });
+            if (failures.length) {
+                bus.emitEvent({ type: 'error-summary', successes, failures });
+            }
+            bus.emitEvent({ type: 'done', filename: summary });
+
         } catch (e: any) {
             jobStore.set(jobId, { status: 'error', error: e?.message || 'failed' });
             bus.emitEvent({ type: 'error', message: e?.message || 'failed' });
+        } finally {
+            try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch {}
         }
     })();
     

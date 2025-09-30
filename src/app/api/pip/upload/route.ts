@@ -100,6 +100,9 @@ export async function POST(req: NextRequest) {
         }
 
         jobStore.set(jobId, { status: 'running' });
+        const successes: Array<{ name: string; index: number }> = [];
+        const failures: Array<{ name: string; index: number; error: string }> = [];
+
         for (const file of files) {
             jobStore.set(jobId, { status: 'running', filename: file.name });
             bus.emitEvent({ type: 'item-start', scope: 'pip-publish', index: file.index, digest: file.name });
@@ -113,18 +116,30 @@ export async function POST(req: NextRequest) {
                     skipExisting,
                     certPath: certificatePath,
                 });
+                successes.push({ name: file.name, index: file.index });
                 bus.emitEvent({ type: 'item-done', scope: 'pip-publish', index: file.index });
             } catch (err: any) {
-                bus.emitEvent({ type: 'error', message: err?.message || 'failed' });
-                jobStore.set(jobId, { status: 'error', error: err?.message || 'failed' });
-                throw err;
+                const message = err?.message || 'failed';
+                failures.push({ name: file.name, index: file.index, error: message });
+                bus.emitEvent({ type: 'item-error', scope: 'pip-publish', index: file.index, message });
             }
         }
 
-        jobStore.set(jobId, { status: 'done', filename: `uploaded ${files.length} packages` });
-        bus.emitEvent({ type: 'done', filename: `uploaded ${files.length} packages` });
-        return new Response(JSON.stringify({ jobId, count: files.length }), {
-            status: 200,
+        if (failures.length === files.length) {
+            const lastError = failures[failures.length - 1]?.error || 'failed';
+            jobStore.set(jobId, { status: 'error', error: lastError });
+            bus.emitEvent({ type: 'error', message: lastError });
+            return new Response(JSON.stringify({ error: lastError, failures, successes }), { status: 500 });
+        }
+
+        const summary = `uploaded ${successes.length} packages` + (failures.length ? `, ${failures.length} failed` : '');
+        jobStore.set(jobId, { status: failures.length ? 'error' : 'done', filename: summary });
+        if (failures.length) {
+            bus.emitEvent({ type: 'error-summary', successes, failures });
+        }
+        bus.emitEvent({ type: 'done', filename: summary });
+        return new Response(JSON.stringify({ jobId, count: successes.length, failures }), {
+            status: failures.length ? 207 : 200,
             headers: { 'Content-Type': 'application/json' },
         });
     } catch (err: any) {

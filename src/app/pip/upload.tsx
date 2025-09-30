@@ -2,11 +2,12 @@
 
 import { PackageUploadModal } from '@/components/PackageUpload/Modal';
 import { ProgressEvent } from '@/lib/progressBus';
+import { useRetryableEventSource } from '@/lib/useRetryableEventSource';
 import { Accordion, Alert, Button, Checkbox, FileInput, Group, PasswordInput, Space, Stack, Text, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { Dropzone } from '@mantine/dropzone';
-import { IconCloudCog, IconCloudUpload, IconDownload, IconX } from '@tabler/icons-react';
+import { IconCloudCog, IconCloudUpload, IconDownload, IconRefresh, IconX } from '@tabler/icons-react';
 import { nanoid } from 'nanoid';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileItem } from '@/components/Upload/FileItem';
@@ -51,7 +52,8 @@ export function UploadPane({ env }: { env: EnvProps }) {
     const perFileRef = useRef<Record<number, PerFileState>>({});
     const [perFileSnap, setPerFileSnap] = useState<Record<number, PerFileState>>({});
     const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
-    const esRef = useRef<EventSource | null>(null);
+    const stopSseRef = useRef<() => void>(() => {});
+    const indexMapRef = useRef<Map<number, number>>(new Map());
 
     const scheduleFlush = useCallback(() => {
         if (flushTimerRef.current) return;
@@ -61,17 +63,21 @@ export function UploadPane({ env }: { env: EnvProps }) {
         }, FLUSH_INTERVAL);
     }, []);
 
-    const resetStreams = useCallback(() => {
+    const resetStreams = useCallback(({ preserveProgress = false }: { preserveProgress?: boolean } = {}) => {
         setJobId(null);
         setStatus('idle');
-        perFileRef.current = {};
-        setPerFileSnap({});
+        if (!preserveProgress) {
+            perFileRef.current = {};
+            setPerFileSnap({});
+        } else {
+            setPerFileSnap({ ...perFileRef.current });
+        }
         if (flushTimerRef.current) {
             clearTimeout(flushTimerRef.current);
             flushTimerRef.current = null;
         }
-        esRef.current?.close();
-        esRef.current = null;
+        stopSseRef.current();
+        indexMapRef.current = new Map();
     }, []);
 
     const form = useForm<FormValues>({
@@ -90,42 +96,53 @@ export function UploadPane({ env }: { env: EnvProps }) {
         },
     });
 
-    const handleEvent = useCallback((data: ProgressEvent) => {
+    const handleSseEvent = useCallback((data: ProgressEvent) => {
+        const resolveIndex = (incomingIndex: number) => {
+            const mapped = indexMapRef.current.get(incomingIndex);
+            return mapped ?? null;
+        };
+
         if (data.type === 'stage') {
             setStatus('running');
             return;
         }
         if (data.type === 'item-start' && data.scope === 'pip-upload') {
+            const targetIndex = resolveIndex(data.index);
+            if (targetIndex === null) return;
             perFileRef.current = {
                 ...perFileRef.current,
-                [data.index]: {
-                    ...perFileRef.current[data.index],
+                [targetIndex]: {
+                    ...perFileRef.current[targetIndex],
                     status: 'uploading',
-                    received: perFileRef.current[data.index]?.received ?? 0,
-                    total: data.total ?? perFileRef.current[data.index]?.total,
+                    received: perFileRef.current[targetIndex]?.received ?? 0,
+                    total: data.total ?? perFileRef.current[targetIndex]?.total,
                 },
             };
             scheduleFlush();
             return;
         }
         if (data.type === 'item-progress' && data.scope === 'pip-upload') {
+            const targetIndex = resolveIndex(data.index);
+            if (targetIndex === null) return;
             perFileRef.current = {
                 ...perFileRef.current,
-                [data.index]: {
-                    ...perFileRef.current[data.index],
+                [targetIndex]: {
+                    ...perFileRef.current[targetIndex],
                     status: 'uploading',
                     received: data.received,
-                    total: data.total ?? perFileRef.current[data.index]?.total,
+                    total: data.total ?? perFileRef.current[targetIndex]?.total,
                 },
             };
             scheduleFlush();
             return;
         }
         if (data.type === 'item-done' && data.scope === 'pip-upload') {
-            const prev = perFileRef.current[data.index];
+            const targetIndex = resolveIndex(data.index);
+            if (targetIndex === null) return;
+            const prev = perFileRef.current[targetIndex];
             perFileRef.current = {
                 ...perFileRef.current,
-                [data.index]: {
+                [targetIndex]: {
                     ...prev,
                     status: 'uploaded',
                     received: prev?.total ?? prev?.received ?? 0,
@@ -135,10 +152,12 @@ export function UploadPane({ env }: { env: EnvProps }) {
             return;
         }
         if (data.type === 'item-start' && data.scope === 'pip-publish') {
+            const targetIndex = resolveIndex(data.index);
+            if (targetIndex === null) return;
             perFileRef.current = {
                 ...perFileRef.current,
-                [data.index]: {
-                    ...perFileRef.current[data.index],
+                [targetIndex]: {
+                    ...perFileRef.current[targetIndex],
                     status: 'publishing',
                 },
             };
@@ -146,10 +165,12 @@ export function UploadPane({ env }: { env: EnvProps }) {
             return;
         }
         if (data.type === 'item-done' && data.scope === 'pip-publish') {
-            const prev = perFileRef.current[data.index];
+            const targetIndex = resolveIndex(data.index);
+            if (targetIndex === null) return;
+            const prev = perFileRef.current[targetIndex];
             perFileRef.current = {
                 ...perFileRef.current,
-                [data.index]: {
+                [targetIndex]: {
                     ...prev,
                     status: 'published',
                     received: prev?.total ?? prev?.received ?? 0,
@@ -158,12 +179,51 @@ export function UploadPane({ env }: { env: EnvProps }) {
             scheduleFlush();
             return;
         }
+        if (data.type === 'item-error' && data.scope === 'pip-publish') {
+            const targetIndex = resolveIndex(data.index);
+            if (targetIndex === null) return;
+            const prev = perFileRef.current[targetIndex];
+            perFileRef.current = {
+                ...perFileRef.current,
+                [targetIndex]: {
+                    ...prev,
+                    status: 'error',
+                    received: prev?.received ?? 0,
+                    total: prev?.total,
+                },
+            };
+            setError((current) => current || data.message || 'アップロードに失敗しました');
+            scheduleFlush();
+            return;
+        }
+        if (data.type === 'item-skip' && data.scope === 'pip-publish') {
+            const targetIndex = resolveIndex(data.index);
+            if (targetIndex === null) return;
+            const prev = perFileRef.current[targetIndex];
+            perFileRef.current = {
+                ...perFileRef.current,
+                [targetIndex]: {
+                    ...prev,
+                    status: 'skipped',
+                    received: prev?.received ?? 0,
+                    total: prev?.total,
+                },
+            };
+            scheduleFlush();
+            return;
+        }
+        if (data.type === 'error-summary') {
+            const failedNames = data.failures.map((f) => f.name).join(', ');
+            setError(failedNames ? `一部のパッケージでエラー: ${failedNames}` : '一部パッケージでエラーが発生しました');
+            scheduleFlush();
+            return;
+        }
         if (data.type === 'done') {
             setStatus('done');
             setLoading(false);
             scheduleFlush();
-            esRef.current?.close();
-            esRef.current = null;
+            stopSseRef.current();
+            indexMapRef.current = new Map();
             return;
         }
         if (data.type === 'error') {
@@ -171,21 +231,52 @@ export function UploadPane({ env }: { env: EnvProps }) {
             setLoading(false);
             setError(data.message || 'アップロードに失敗しました');
             perFileRef.current = Object.fromEntries(
-                Object.entries(perFileRef.current).map(([key, value]) => [key, { ...value, status: value.status === 'published' ? 'published' : 'error' }])
+                Object.entries(perFileRef.current).map(([key, value]) => [Number(key), { ...value, status: value.status === 'published' ? 'published' : 'error' }])
             ) as Record<number, PerFileState>;
             scheduleFlush();
-            esRef.current?.close();
-            esRef.current = null;
+            stopSseRef.current();
+            indexMapRef.current = new Map();
             return;
         }
     }, [scheduleFlush]);
 
-    const onSubmit = form.onSubmit(async (values) => {
-        if (values.files.length === 0) {
+    const handleSseMessage = useCallback((event: MessageEvent) => {
+        try {
+            const payload = JSON.parse(event.data) as ProgressEvent;
+            handleSseEvent(payload);
+        } catch (err) {
+            console.error('Failed to parse SSE payload', err);
+        }
+    }, [handleSseEvent]);
+
+    const { start: startSse, stop: stopSse } = useRetryableEventSource({
+        onMessage: handleSseMessage,
+        onOpen: () => {
+            console.debug('pip SSE connected');
+        },
+        onError: (event) => {
+            console.error('pip SSE error', event);
+        },
+        notificationId: 'pip-upload-sse',
+        notificationLabel: 'pipアップロード進捗',
+    });
+
+    useEffect(() => {
+        stopSseRef.current = stopSse;
+    }, [stopSse]);
+
+    const startUpload = useCallback(async (targetIndices?: number[]) => {
+        const currentValues = form.getValues();
+        const allFiles = currentValues.files;
+        const indices = (targetIndices ?? allFiles.map((_, idx) => idx)).filter((idx) => idx >= 0 && idx < allFiles.length && allFiles[idx]);
+        const filesToUpload = indices.map((idx) => allFiles[idx]!).filter(Boolean);
+
+        if (filesToUpload.length === 0) {
             setError('アップロードするファイルを選択してください');
             return;
         }
-        const repositoryUrl = values.repositoryUrl.trim();
+
+        const repositoryUrl = (currentValues.repositoryUrl || '').trim();
         if (!repositoryUrl) {
             setError('レジストリURLを入力してください');
             return;
@@ -196,52 +287,57 @@ export function UploadPane({ env }: { env: EnvProps }) {
             setError('レジストリURLの形式が正しくありません');
             return;
         }
+
         setLoading(true);
         setError(null);
-        resetStreams();
+
+        const preserveProgress = Boolean(targetIndices && targetIndices.length);
+        resetStreams({ preserveProgress });
+
+        const nextPerFile: Record<number, PerFileState> = preserveProgress ? { ...perFileRef.current } : {};
+        if (preserveProgress) {
+            for (const idx of indices) {
+                const file = allFiles[idx];
+                if (!file) continue;
+                nextPerFile[idx] = { received: 0, total: file.size, status: 'waiting' };
+            }
+        } else {
+            for (let i = 0; i < allFiles.length; i++) {
+                const file = allFiles[i];
+                if (!file) continue;
+                nextPerFile[i] = { received: 0, total: file.size, status: 'waiting' };
+            }
+        }
+        perFileRef.current = nextPerFile;
+        setPerFileSnap({ ...perFileRef.current });
 
         const newJobId = nanoid();
         setJobId(newJobId);
         setStatus('running');
-        perFileRef.current = Object.fromEntries(
-            values.files.map((file, idx) => [idx, { received: 0, total: file.size, status: 'waiting' } as PerFileState])
-        );
-        setPerFileSnap({ ...perFileRef.current });
         open();
 
-        const es = new EventSource(`/api/build/progress?jobId=${newJobId}`);
-        esRef.current = es;
-        es.onmessage = (ev) => {
-            try {
-                const payload = JSON.parse(ev.data) as ProgressEvent;
-                handleEvent(payload);
-            } catch (err) {
-                console.error('Failed to parse SSE payload', err);
-            }
-        };
-        es.onerror = (err) => {
-            console.error('SSE error', err);
-        };
+        indexMapRef.current = new Map(indices.map((originalIndex, order) => [order, originalIndex]));
+        startSse(`/api/build/progress?jobId=${newJobId}`);
 
         const fd = new FormData();
-        for (const file of values.files) {
+        for (const file of filesToUpload) {
             fd.append('files', file, file.name);
         }
-        if (values.caCert) {
-            fd.append('caCert', values.caCert, values.caCert.name);
+        if (currentValues.caCert) {
+            fd.append('caCert', currentValues.caCert, currentValues.caCert.name);
         }
 
         const params = new URLSearchParams({
             jobId: newJobId,
             repositoryUrl,
         });
-        const usernameValue = form.getValues().username.trim();
-        const passwordValue = form.getValues().password;
-        const tokenValue = form.getValues().token.trim();
+        const usernameValue = currentValues.username.trim();
+        const passwordValue = currentValues.password;
+        const tokenValue = currentValues.token.trim();
         if (usernameValue) params.set('username', usernameValue);
         if (passwordValue) params.set('password', passwordValue);
         if (tokenValue) params.set('token', tokenValue);
-        if (form.getValues().skipExisting) params.set('skipExisting', 'true');
+        if (currentValues.skipExisting) params.set('skipExisting', 'true');
 
         try {
             const res = await fetch(`/api/pip/upload?${params.toString()}`, {
@@ -256,9 +352,22 @@ export function UploadPane({ env }: { env: EnvProps }) {
             setLoading(false);
             setStatus('error');
             setError(e?.message || 'アップロードに失敗しました');
-            es.close();
-            esRef.current = null;
+            stopSse();
+            indexMapRef.current = new Map();
         }
+    }, [form, open, resetStreams, startSse, stopSse]);
+
+    const handleRetryFailed = useCallback(() => {
+        if (loading) return;
+        const failedIndices = Object.entries(perFileRef.current)
+            .filter(([, value]) => value?.status === 'error')
+            .map(([key]) => Number(key));
+        if (failedIndices.length === 0) return;
+        void startUpload(failedIndices);
+    }, [loading, startUpload]);
+
+    const onSubmit = form.onSubmit(() => {
+        void startUpload();
     });
 
     useEffect(() => {
@@ -272,9 +381,12 @@ export function UploadPane({ env }: { env: EnvProps }) {
                 clearTimeout(flushTimerRef.current);
                 flushTimerRef.current = null;
             }
-            esRef.current?.close();
+            stopSseRef.current();
+            indexMapRef.current = new Map();
         };
     }, []);
+
+    const failedCount = Object.values(perFileSnap).filter((state) => state?.status === 'error').length;
 
     return (
         <div>
@@ -435,6 +547,17 @@ export function UploadPane({ env }: { env: EnvProps }) {
                     <Space h="md" />
                     <Button type="submit" size="lg" radius="lg" loading={loading}>
                         アップロード
+                    </Button>
+                    <Button
+                        type="button"
+                        size="lg"
+                        radius="lg"
+                        variant="light"
+                        leftSection={<IconRefresh size="1.1rem" />}
+                        onClick={handleRetryFailed}
+                        disabled={loading || failedCount === 0}
+                    >
+                        失敗したパッケージを再試行
                     </Button>
                 </Stack>
             </form>

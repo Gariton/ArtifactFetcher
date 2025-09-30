@@ -3,7 +3,7 @@ import { Accordion, Alert, Button, Checkbox, Group, PasswordInput, Space, Stack,
 import { useForm } from "@mantine/form";
 import { useDisclosure, useMap } from "@mantine/hooks";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { IconCloudCog, IconCloudUpload, IconDownload, IconX } from "@tabler/icons-react";
+import { IconCloudCog, IconCloudUpload, IconDownload, IconRefresh, IconX } from "@tabler/icons-react";
 import { Layer } from "@/lib/progressBus";
 import { ProgressEvent } from "@/lib/progressBus";
 import { Dropzone } from "@mantine/dropzone";
@@ -45,6 +45,7 @@ export function UploadPane() {
     const FLUSH_INTERVAL = 250;
 
     const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const indexMapRef = useRef<Map<number, number>>(new Map());
     const scheduleFlush = useCallback(() => {
         if (flushTimerRef.current) return;
         flushTimerRef.current = setTimeout(() => {
@@ -64,93 +65,193 @@ export function UploadPane() {
     const handleSseMessage = useCallback((event: MessageEvent) => {
         try {
             const data = JSON.parse(event.data) as ProgressEvent;
-            scheduleFlush();
+            const resolveIndex = (incomingIndex: number) => {
+                const mapped = indexMapRef.current.get(incomingIndex);
+                return mapped ?? null;
+            };
 
-            if (data.type === "item-start" && data.scope == "upload") {
+            if (data.type === 'item-start' && data.scope === 'upload') {
+                const targetIndex = resolveIndex(data.index);
+                if (targetIndex === null) return;
                 perFileRef.current = {
                     ...perFileRef.current,
-                    [data.index]: {
-                        ...perFileRef.current[data.index],
+                    [targetIndex]: {
+                        ...perFileRef.current[targetIndex],
                         received: 0,
-                        total: data.total,
-                        status: "processing"
-                    }
-                }
+                        total: data.total ?? perFileRef.current[targetIndex]?.total,
+                        status: 'uploading',
+                    },
+                };
+                scheduleFlush();
+                return;
             }
-            if (data.type === "item-progress" && data.scope == "upload") {
+            if (data.type === 'item-progress' && data.scope === 'upload') {
+                const targetIndex = resolveIndex(data.index);
+                if (targetIndex === null) return;
                 perFileRef.current = {
                     ...perFileRef.current,
-                    [data.index]: {
-                        ...perFileRef.current[data.index],
+                    [targetIndex]: {
+                        ...perFileRef.current[targetIndex],
                         received: data.received,
-                        status: "processing"
-                    }
-                }
+                        total: data.total ?? perFileRef.current[targetIndex]?.total,
+                        status: 'uploading',
+                    },
+                };
+                scheduleFlush();
+                return;
             }
-            if (data.type === "item-done" && data.scope == "upload") {
+            if (data.type === 'item-done' && data.scope === 'upload') {
+                const targetIndex = resolveIndex(data.index);
+                if (targetIndex === null) return;
+                const prev = perFileRef.current[targetIndex];
                 perFileRef.current = {
                     ...perFileRef.current,
-                    [data.index]: {
-                        ...perFileRef.current[data.index],
-                        received: perFileRef.current[data.index]?.total ?? 0,
-                        status: "done"
-                    }
-                }
+                    [targetIndex]: {
+                        ...prev,
+                        received: prev?.total ?? prev?.received ?? 0,
+                        status: 'uploaded',
+                    },
+                };
+                scheduleFlush();
+                return;
+            }
+
+            if (data.type === 'item-start' && data.scope === 'push-image') {
+                const targetIndex = resolveIndex(data.index);
+                if (targetIndex === null) return;
+                perFileRef.current = {
+                    ...perFileRef.current,
+                    [targetIndex]: {
+                        ...perFileRef.current[targetIndex],
+                        status: 'pushing',
+                    },
+                };
+                scheduleFlush();
+                return;
+            }
+            if (data.type === 'item-done' && data.scope === 'push-image') {
+                const targetIndex = resolveIndex(data.index);
+                if (targetIndex === null) return;
+                const prev = perFileRef.current[targetIndex];
+                perFileRef.current = {
+                    ...perFileRef.current,
+                    [targetIndex]: {
+                        ...prev,
+                        status: 'done',
+                        received: prev?.total ?? prev?.received ?? 0,
+                    },
+                };
+                scheduleFlush();
+                return;
+            }
+            if (data.type === 'item-error' && data.scope === 'push-image') {
+                const targetIndex = resolveIndex(data.index);
+                if (targetIndex === null) return;
+                const prev = perFileRef.current[targetIndex];
+                perFileRef.current = {
+                    ...perFileRef.current,
+                    [targetIndex]: {
+                        ...prev,
+                        status: 'error',
+                    },
+                };
+                setError((current) => current || data.message || 'アップロードに失敗しました');
+                scheduleFlush();
+                return;
             }
 
             if (data.type === 'repo-tag-resolved') {
                 open();
-                data.items.map(({repository, tag}) => {
+                data.items.forEach(({ repository, tag }) => {
                     manifests.set(`${repository}@${tag}`, []);
                     perLayerRef.current.set(`${repository}@${tag}`, {});
                 });
+                scheduleFlush();
+                return;
             }
             if (data.type === 'manifest-resolved') {
                 if (data.manifestName) {
                     manifests.set(data.manifestName, data.items as Layer[]);
-                    perLayerRef.current.set(data.manifestName, data.items.map(() => ({
-                        received: 0,
-                        total: 0,
-                        status: "process"
-                    })));
+                    perLayerRef.current.set(
+                        data.manifestName,
+                        data.items.map(() => ({ received: 0, total: 0, status: 'process' }))
+                    );
+                    scheduleFlush();
                 }
+                return;
             }
-            if (data.type === 'item-start' && data.scope == "push-item") {
+            if (data.type === 'item-start' && data.scope === 'push-item') {
                 if (data.manifestName) {
                     const record = perLayerRef.current.get(data.manifestName) ?? {};
-                    perLayerRef.current.set(data.manifestName, {...record, [data.index]: {received: 0, total: data.total, status: "process"}});
+                    perLayerRef.current.set(data.manifestName, {
+                        ...record,
+                        [data.index]: { received: 0, total: data.total, status: 'process' },
+                    });
+                    scheduleFlush();
                 }
+                return;
             }
-            if (data.type === 'item-progress' && data.scope == "push-item") {
+            if (data.type === 'item-progress' && data.scope === 'push-item') {
                 if (data.manifestName) {
                     const record = perLayerRef.current.get(data.manifestName) ?? {};
-                    perLayerRef.current.set(data.manifestName, {...record, [data.index]: {received: data.received, total: data.total, status: "process"}});
+                    perLayerRef.current.set(data.manifestName, {
+                        ...record,
+                        [data.index]: { received: data.received, total: data.total, status: 'process' },
+                    });
+                    scheduleFlush();
                 }
+                return;
             }
-            if (data.type === 'item-done' && data.scope == "push-item") {
+            if (data.type === 'item-done' && data.scope === 'push-item') {
                 if (data.manifestName) {
                     const record = perLayerRef.current.get(data.manifestName) ?? {};
-                    perLayerRef.current.set(data.manifestName, {...record, [data.index]: {...record[data.index], status: "done"}});
+                    perLayerRef.current.set(data.manifestName, {
+                        ...record,
+                        [data.index]: { ...record[data.index], status: 'done' },
+                    });
+                    scheduleFlush();
                 }
+                return;
             }
-            if (data.type === 'item-skip' && data.scope == 'push-item') {
+            if (data.type === 'item-skip' && data.scope === 'push-item') {
                 if (data.manifestName) {
                     const record = perLayerRef.current.get(data.manifestName) ?? {};
-                    perLayerRef.current.set(data.manifestName, {...record, [data.index]: {received: 100, total: 100, status: "skipped"}})
+                    perLayerRef.current.set(data.manifestName, {
+                        ...record,
+                        [data.index]: { received: 100, total: 100, status: 'skipped' },
+                    });
+                    scheduleFlush();
                 }
+                return;
+            }
+            if (data.type === 'error-summary') {
+                const failedNames = data.failures.map((f) => f.name).join(', ');
+                setError(failedNames ? `一部のイメージでエラー: ${failedNames}` : '一部のイメージでエラーが発生しました');
+                scheduleFlush();
+                return;
             }
             if (data.type === 'error') {
-                stopSseRef.current();
                 setLoading(false);
+                setError(data.message || 'アップロードに失敗しました');
+                perFileRef.current = Object.fromEntries(
+                    Object.entries(perFileRef.current).map(([key, value]) => [Number(key), { ...value, status: value.status === 'done' ? 'done' : 'error' }])
+                );
+                scheduleFlush();
+                stopSseRef.current();
+                indexMapRef.current = new Map();
+                return;
             }
             if (data.type === 'done') {
-                stopSseRef.current();
                 setLoading(false);
+                stopSseRef.current();
+                indexMapRef.current = new Map();
+                scheduleFlush();
+                return;
             }
         } catch (err) {
-            console.error("SSE payload parse failed", err);
+            console.error('SSE payload parse failed', err);
         }
-    }, [scheduleFlush, manifests, open]);
+    }, [manifests, open, scheduleFlush]);
 
     const { start: startSse, stop: stopSse } = useRetryableEventSource({
         onMessage: handleSseMessage,
@@ -168,13 +269,21 @@ export function UploadPane() {
         stopSseRef.current = stopSse;
     }, [stopSse]);
 
-    const reset = () => {
+    const reset = ({ preserveProgress = false }: { preserveProgress?: boolean } = {}) => {
         setJobId(null);
-        manifests.clear();
-        perLayerRef.current = new Map();
-        setPerLayerSnap(new Map());
+        if (!preserveProgress) {
+            manifests.clear();
+            perLayerRef.current = new Map();
+            setPerLayerSnap(new Map());
+            perFileRef.current = {};
+            setPerFileSnap({});
+        } else {
+            setPerLayerSnap(new Map(perLayerRef.current.entries()));
+            setPerFileSnap({ ...perFileRef.current });
+        }
         stopSse();
-    }
+        indexMapRef.current = new Map();
+    };
     const form = useForm<FormType>({
         mode: "uncontrolled",
         initialValues: {
@@ -193,54 +302,118 @@ export function UploadPane() {
         }
     })
     
-    const onSubmit = async (values: typeof form.values) => {
-        setLoading(true);
-        setError(null);
-        reset();
-        try {
-            if (values.files.length <= 0) {setError("Dockerイメージファイルを選択してください"); return;}
-            perFileRef.current = values.files.map(f => ({
-                received: 0,
-                total: f.size,
-                status: "waiting"
-            }));
-            // フロントからSSEを張ってアップロード状況も監視したい
-            const newJobId = nanoid();
-            setJobId(newJobId);
-            startSse(`/api/build/progress?jobId=${newJobId}`);
+    const startUpload = useCallback(async (targetIndices?: number[]) => {
+        const currentValues = form.getValues();
+        const allFiles = currentValues.files;
+        const indices = (targetIndices ?? allFiles.map((_, idx) => idx)).filter((idx) => idx >= 0 && idx < allFiles.length && allFiles[idx]);
+        const filesToUpload = indices.map((idx) => allFiles[idx]!);
 
-            const fd = new FormData();
-            for (const f of Array.from(values.files)) fd.append('files', f, f.name);
+        if (filesToUpload.length === 0) {
+            setError("Dockerイメージファイルを選択してください");
+            return;
+        }
 
-            const qs = new URLSearchParams({
-                jobId: newJobId,
-                registry: values.registry,
-                repository: values.repo,
-                insecureTLS: "true",
-                concurrency: "1",
-                ...(values.username ? { username: values.username } : {}),
-                ...(values.password ? { password: values.password } : {}),
-                tag: values.tag,
-                useManifest: String(values.useManifest)
-            });
-
-            const res = await fetch(`/api/docker/upload-multi?${qs.toString()}`, {
-                method: 'POST',
-                body: fd 
-            });
-
-            if (!res.ok) {
-                stopSse();
-                setLoading(false);
-                alert('push start failed');
+        const registry = currentValues.registry.trim();
+        if (!registry) {
+            setError("レジストリを指定してください");
+            return;
+        }
+        if (!currentValues.useManifest) {
+            if (!currentValues.repo.trim()) {
+                setError("リポジトリを指定してください");
                 return;
             }
-        } catch (e: any) {
-            stopSse();
-            setLoading(false);
-            setError(e.message || "アップロードに失敗しました")
+            if (!currentValues.tag.trim()) {
+                setError("タグを指定してください");
+                return;
+            }
         }
-    };
+
+        setLoading(true);
+        setError(null);
+
+        const preserveProgress = Boolean(targetIndices && targetIndices.length);
+        reset({ preserveProgress });
+        if (!preserveProgress) {
+            close();
+        }
+
+        const nextPerFile: Record<number, { received: number; total?: number; status: string }> = preserveProgress ? { ...perFileRef.current } : {};
+        if (preserveProgress) {
+            for (const idx of indices) {
+                const file = allFiles[idx];
+                if (!file) continue;
+                nextPerFile[idx] = { received: 0, total: file.size, status: 'waiting' };
+            }
+        } else {
+            for (let i = 0; i < allFiles.length; i++) {
+                const file = allFiles[i];
+                if (!file) continue;
+                nextPerFile[i] = { received: 0, total: file.size, status: 'waiting' };
+            }
+        }
+        perFileRef.current = nextPerFile;
+        setPerFileSnap({ ...perFileRef.current });
+
+        const newJobId = nanoid();
+        setJobId(newJobId);
+
+        indexMapRef.current = new Map(indices.map((originalIndex, order) => [order, originalIndex]));
+        startSse(`/api/build/progress?jobId=${newJobId}`);
+
+        const fd = new FormData();
+        for (const file of filesToUpload) {
+            fd.append('files', file, file.name);
+        }
+
+        const qs = new URLSearchParams({
+            jobId: newJobId,
+            registry,
+            repository: currentValues.repo,
+            insecureTLS: 'true',
+            concurrency: '1',
+            tag: currentValues.tag,
+            useManifest: String(currentValues.useManifest),
+        });
+        if (currentValues.username) qs.set('username', currentValues.username);
+        if (currentValues.password) qs.set('password', currentValues.password);
+
+        try {
+            const res = await fetch(`/api/docker/upload-multi?${qs.toString()}`, {
+                method: 'POST',
+                body: fd,
+            });
+            if (!res.ok) {
+                const text = await res.text();
+                throw new Error(text || 'push start failed');
+            }
+        } catch (e: any) {
+            setLoading(false);
+            setError(e?.message || 'アップロードに失敗しました');
+            stopSse();
+            indexMapRef.current = new Map();
+            setJobId(null);
+            const failedEntries = Object.fromEntries(indices.map((idx) => [idx, { ...perFileRef.current[idx], status: 'error' }])) as Record<number, { received: number; total?: number; status: string }>;
+            perFileRef.current = {
+                ...perFileRef.current,
+                ...failedEntries,
+            };
+            setPerFileSnap({ ...perFileRef.current });
+        }
+    }, [close, form, reset, startSse, stopSse]);
+
+    const onSubmit = form.onSubmit(() => {
+        void startUpload();
+    });
+
+    const handleRetryFailed = useCallback(() => {
+        if (loading) return;
+        const failedIndices = Object.entries(perFileRef.current)
+            .filter(([, value]) => value?.status === 'error')
+            .map(([key]) => Number(key));
+        if (failedIndices.length === 0) return;
+        void startUpload(failedIndices);
+    }, [loading, startUpload]);
 
     useEffect(() => {
         getEnvironmentVar().then(v => {
@@ -257,8 +430,11 @@ export function UploadPane() {
         return () => {
             if (flushTimerRef.current) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null; }
             stopSseRef.current();
+            indexMapRef.current = new Map();
         };
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const failedCount = Object.values(perFileSnap).filter((state) => state?.status === 'error').length;
 
     return (
         <div>
@@ -273,7 +449,7 @@ export function UploadPane() {
             </Alert>
 
             <form
-                onSubmit={form.onSubmit(onSubmit)}
+                onSubmit={onSubmit}
             >
                 <Stack>
                     <Accordion
@@ -324,7 +500,14 @@ export function UploadPane() {
                         </Accordion.Item>
                     </Accordion>
                     <Dropzone
-                        onDrop={(v)=>form.setFieldValue('files', v)}
+                        onDrop={(files) => {
+                            if (loading) return;
+                            form.setFieldValue('files', files);
+                            perFileRef.current = Object.fromEntries(
+                                files.map((file, idx) => [idx, { received: 0, total: file.size, status: 'waiting' }])
+                            ) as Record<number, { received: number; total?: number; status: string }>;
+                            setPerFileSnap({ ...perFileRef.current });
+                        }}
                         radius="lg"
                         accept={["application/x-tar"]}
                         p="xl"
@@ -367,7 +550,16 @@ export function UploadPane() {
                                 file={file}
                                 percent={perFileSnap[i]?.status == "done" ? 100 : Math.floor(((perFileSnap[i]?.received ?? 0) / file.size) * 100)}
                                 status={perFileSnap[i]?.status}
-                                onDelete={()=>form.setFieldValue("files", (prev) => prev.filter(n=>n.name!==file.name))}
+                                onDelete={() => {
+                                    if (loading) return;
+                                    const currentFiles = form.getValues().files;
+                                    const nextFiles = currentFiles.filter((_, idx) => idx !== i);
+                                    form.setFieldValue('files', nextFiles);
+                                    perFileRef.current = Object.fromEntries(
+                                        nextFiles.map((nextFile, index) => [index, { received: 0, total: nextFile.size, status: 'waiting' }])
+                                    ) as Record<number, { received: number; total?: number; status: string }>;
+                                    setPerFileSnap({ ...perFileRef.current });
+                                }}
                             />
                         ))}
                     </Stack>
@@ -413,6 +605,17 @@ export function UploadPane() {
                         loading={loading}
                     >
                         Upload & Push
+                    </Button>
+                    <Button
+                        type="button"
+                        size="lg"
+                        radius="lg"
+                        variant="light"
+                        leftSection={<IconRefresh size="1.1rem" />}
+                        onClick={handleRetryFailed}
+                        disabled={loading || failedCount === 0}
+                    >
+                        失敗したイメージを再試行
                     </Button>
                 </Stack>
             </form>

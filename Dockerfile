@@ -52,7 +52,7 @@ USER nextjs
 
 # standalone 実行に必要な最小ファイルだけコピー
 COPY --chown=nextjs:nextjs --from=builder /app/.next/standalone ./
-COPY --chown=nextjs:nextjs --from=builder /app/.next/static ./ .next/static
+COPY --chown=nextjs:nextjs --from=builder /app/.next/static ./.next/static
 COPY --chown=nextjs:nextjs --from=builder /app/public ./public
 
 # 健康チェック（任意: /api/health があれば差し替え）

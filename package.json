@@ -23,11 +23,11 @@
     "busboy": "^1.6.0",
     "eventsource": "^4.0.0",
     "nanoid": "^5.1.5",
-    "next": "^15",
+    "next": "^16",
     "pacote": "^21.0.0",
     "progress": "^2.0.3",
-    "react": "^19",
-    "react-dom": "^19",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
     "tar": "^7.4.3"
   },
   "devDependencies": {

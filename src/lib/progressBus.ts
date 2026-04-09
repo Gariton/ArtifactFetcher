@@ -35,6 +35,9 @@ export type RpmPackage = {
     version: string;
     filename: string;
     size: number;
+    repositoryId?: string;
+    repositoryLabel?: string;
+    repositoryFolder?: string;
 };
 
 export type ProgressEvent =

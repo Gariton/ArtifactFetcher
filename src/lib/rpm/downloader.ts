@@ -8,13 +8,14 @@ import { ProgressBus, type RpmPackage } from '@/lib/progressBus';
 export type RpmRepoPreset = {
     id: string;
     label: string;
+    folderName: string;
     baseUrl: string;
 };
 
 export const RPM_REPO_PRESETS: RpmRepoPreset[] = [
-    { id: 'centos-stream-9-baseos', label: 'CentOS Stream 9 BaseOS (official)', baseUrl: 'https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/' },
-    { id: 'centos-stream-9-appstream', label: 'CentOS Stream 9 AppStream (official)', baseUrl: 'https://mirror.stream.centos.org/9-stream/AppStream/x86_64/os/' },
-    { id: 'epel-9-everything', label: 'EPEL 9 Everything', baseUrl: 'https://dl.fedoraproject.org/pub/epel/9/Everything/x86_64/' },
+    { id: 'centos-stream-9-baseos', label: 'CentOS Stream 9 BaseOS (official)', folderName: 'CentOS Stream BaseOS', baseUrl: 'https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/' },
+    { id: 'centos-stream-9-appstream', label: 'CentOS Stream 9 AppStream (official)', folderName: 'CentOS Stream AppStream', baseUrl: 'https://mirror.stream.centos.org/9-stream/AppStream/x86_64/os/' },
+    { id: 'epel-9-everything', label: 'EPEL 9 Everything', folderName: 'EPEL 9', baseUrl: 'https://dl.fedoraproject.org/pub/epel/9/Everything/x86_64/' },
 ];
 
 type BuildRpmBundleOptions = {
@@ -28,6 +29,13 @@ type BuildRpmBundleOptions = {
 type RunOptions = {
     onStdoutLine?: (line: string) => void;
     onStderrLine?: (line: string) => void;
+};
+
+type RpmNevra = {
+    name: string;
+    version: string;
+    release: string;
+    arch: string;
 };
 
 function streamLines(chunk: string, remainder: string, onLine?: (line: string) => void) {
@@ -69,6 +77,10 @@ function run(cmd: string, args: string[], opts: RunOptions = {}) {
     });
 }
 
+function sanitizeFolderName(name: string) {
+    return name.replace(/[\\/:*?"<>|]/g, '_').trim();
+}
+
 async function ensureDnfAvailable() {
     const check = await run('dnf', ['--version']).catch(() => null);
     if (!check || check.code !== 0) throw new Error('dnf command is required for rpm download. Please install dnf + dnf-plugins-core.');
@@ -76,23 +88,64 @@ async function ensureDnfAvailable() {
     if (!hasDownload || hasDownload.code !== 0) throw new Error('dnf download command is required. Please install dnf-plugins-core.');
 }
 
-function buildManifest(files: string[], packagesDir: string): Promise<RpmPackage[]> {
-    return Promise.all(files.map(async (file) => {
+async function queryNevra(filePath: string): Promise<RpmNevra | null> {
+    const result = await run('rpm', ['-qp', '--qf', '%{NAME}\t%{VERSION}\t%{RELEASE}\t%{ARCH}\n', filePath]).catch(() => null);
+    if (!result || result.code !== 0) return null;
+    const [line] = result.stdout.trim().split(/\r?\n/);
+    if (!line) return null;
+    const [name, version, release, arch] = line.split('\t').map((s) => s.trim());
+    if (!name || !version || !release || !arch) return null;
+    return { name, version, release, arch };
+}
+
+async function queryRepoId(nevra: RpmNevra, repoIds: string[]): Promise<string | undefined> {
+    const args: string[] = ['repoquery', '--quiet', '--disablerepo=*'];
+    for (const id of repoIds) args.push('--enablerepo', id);
+    args.push('--qf', '%{repoid}', `${nevra.name}-${nevra.version}-${nevra.release}.${nevra.arch}`);
+    const result = await run('dnf', args).catch(() => null);
+    if (!result || result.code !== 0) return undefined;
+    const first = result.stdout.split(/\r?\n/).map((s) => s.trim()).find(Boolean);
+    return first || undefined;
+}
+
+async function buildManifestAndLayout(files: string[], packagesDir: string, outputByRepoRoot: string, repos: RpmRepoPreset[], bus: ProgressBus): Promise<RpmPackage[]> {
+    const repoIds = repos.map((r) => r.id);
+    const repoMap = new Map(repos.map((r) => [r.id, r]));
+    const manifest: RpmPackage[] = [];
+
+    for (const file of files) {
         const fullPath = path.join(packagesDir, file);
         const stat = await fs.promises.stat(fullPath);
+        const nevra = await queryNevra(fullPath);
+        const repoId = nevra ? await queryRepoId(nevra, repoIds) : undefined;
+        const repo = repoId ? repoMap.get(repoId) : undefined;
+
         const raw = file.replace(/\.rpm$/i, '');
         const lastDash = raw.lastIndexOf('-');
         const secondLastDash = lastDash > 0 ? raw.lastIndexOf('-', lastDash - 1) : -1;
         const splitAt = secondLastDash > 0 ? secondLastDash : lastDash;
-        const name = splitAt > 0 ? raw.slice(0, splitAt) : file;
-        const version = splitAt > 0 ? raw.slice(splitAt + 1) : 'unknown';
-        return {
+        const name = nevra?.name || (splitAt > 0 ? raw.slice(0, splitAt) : file);
+        const version = nevra ? `${nevra.version}-${nevra.release}` : (splitAt > 0 ? raw.slice(splitAt + 1) : 'unknown');
+
+        const folder = sanitizeFolderName(repo?.folderName || repoId || 'unknown');
+        const repoDir = path.join(outputByRepoRoot, folder);
+        await fs.promises.mkdir(repoDir, { recursive: true });
+        await fs.promises.copyFile(fullPath, path.join(repoDir, file));
+
+        manifest.push({
             name,
             version,
             filename: file,
             size: stat.size,
-        } satisfies RpmPackage;
-    }));
+            repositoryId: repoId,
+            repositoryLabel: repo?.label,
+            repositoryFolder: folder,
+        });
+
+        bus.emitEvent({ type: 'log', level: 'info', message: `${file} -> ${folder}` });
+    }
+
+    return manifest;
 }
 
 export async function buildRpmBundle({ specs, bundleName = 'rpm-offline', selectedRepos, resolveDependencies = true, bus }: BuildRpmBundleOptions) {
@@ -108,7 +161,9 @@ export async function buildRpmBundle({ specs, bundleName = 'rpm-offline', select
     const workRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'rpmdl-'));
     const bundleRoot = path.join(workRoot, bundleName);
     const packagesDir = path.join(bundleRoot, 'rpm', 'packages');
+    const perRepoDir = path.join(bundleRoot, 'rpm', 'by-repository');
     await fs.promises.mkdir(packagesDir, { recursive: true });
+    await fs.promises.mkdir(perRepoDir, { recursive: true });
 
     await fs.promises.writeFile(path.join(bundleRoot, 'rpm', 'specs.txt'), specs.join('\n'), 'utf8');
     await fs.promises.writeFile(path.join(bundleRoot, 'rpm', 'repositories.json'), JSON.stringify(repos, null, 2), 'utf8');
@@ -136,8 +191,9 @@ export async function buildRpmBundle({ specs, bundleName = 'rpm-offline', select
 
     const downloadedFiles = (await fs.promises.readdir(packagesDir)).filter((name) => name.toLowerCase().endsWith('.rpm')).sort();
     bus.emitEvent({ type: 'log', level: 'info', message: `ダウンロード完了: ${downloadedFiles.length} rpm` });
+    bus.emitEvent({ type: 'stage', stage: 'rpm-classify-by-repository' });
 
-    const manifest = await buildManifest(downloadedFiles, packagesDir);
+    const manifest = await buildManifestAndLayout(downloadedFiles, packagesDir, perRepoDir, repos, bus);
     bus.emitEvent({ type: 'manifest-resolved', items: manifest });
 
     for (let i = 0; i < manifest.length; i += 1) {

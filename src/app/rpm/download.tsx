@@ -159,7 +159,7 @@ export function DownloadPane() {
                         </Stack>
                     </ScrollArea>
                 </Stack>
-                <ScrollArea h={260}><Stack gap="sm">{packages.length === 0 && (status === 'starting' || status === 'running') ? <Center h={120}><Loader /></Center> : packages.map((pkg, idx) => <PipPackageCard key={`${pkg.filename}-${idx}`} index={idx} name={pkg.name} version={pkg.version} filename={pkg.filename} received={perPackage[idx]?.received ?? 0} total={perPackage[idx]?.total} status={perPackage[idx]?.status ?? 'waiting'} />)}</Stack></ScrollArea>
+                <ScrollArea h={260}><Stack gap="sm">{packages.length === 0 && (status === 'starting' || status === 'running') ? <Center h={120}><Loader /></Center> : packages.map((pkg, idx) => <PipPackageCard key={`${pkg.filename}-${idx}`} index={idx} name={pkg.name} version={pkg.version} filename={`${pkg.filename}${pkg.repositoryFolder ? ` • ${pkg.repositoryFolder}` : ''}`} received={perPackage[idx]?.received ?? 0} total={perPackage[idx]?.total} status={perPackage[idx]?.status ?? 'waiting'} />)}</Stack></ScrollArea>
                 <Button leftSection={<IconDownload size="1em" />} fullWidth radius="lg" mt="md" color="dark" disabled={!jobId || status !== 'done'} component="a" href={jobId ? `/api/build/download?jobId=${jobId}` : '#'} target="_blank">ダウンロード</Button>
             </Modal>
         </div>

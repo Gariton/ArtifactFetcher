@@ -25,17 +25,47 @@ type BuildRpmBundleOptions = {
     bus: ProgressBus;
 };
 
-function run(cmd: string, args: string[]) {
+type RunOptions = {
+    onStdoutLine?: (line: string) => void;
+    onStderrLine?: (line: string) => void;
+};
+
+function streamLines(chunk: string, remainder: string, onLine?: (line: string) => void) {
+    if (!onLine) return remainder + chunk;
+    const text = remainder + chunk;
+    const parts = text.split(/\r?\n/);
+    const nextRemainder = parts.pop() ?? '';
+    for (const line of parts) {
+        const clean = line.trim();
+        if (clean) onLine(clean);
+    }
+    return nextRemainder;
+}
+
+function run(cmd: string, args: string[], opts: RunOptions = {}) {
     return new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
         const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
         let stdout = '';
         let stderr = '';
+        let stdoutRemain = '';
+        let stderrRemain = '';
+
         child.stdout.setEncoding('utf8');
         child.stderr.setEncoding('utf8');
-        child.stdout.on('data', (chunk) => { stdout += chunk; });
-        child.stderr.on('data', (chunk) => { stderr += chunk; });
+        child.stdout.on('data', (chunk) => {
+            stdout += chunk;
+            stdoutRemain = streamLines(chunk, stdoutRemain, opts.onStdoutLine);
+        });
+        child.stderr.on('data', (chunk) => {
+            stderr += chunk;
+            stderrRemain = streamLines(chunk, stderrRemain, opts.onStderrLine);
+        });
         child.on('error', reject);
-        child.on('close', (code) => resolve({ code: code ?? -1, stdout, stderr }));
+        child.on('close', (code) => {
+            if (opts.onStdoutLine && stdoutRemain.trim()) opts.onStdoutLine(stdoutRemain.trim());
+            if (opts.onStderrLine && stderrRemain.trim()) opts.onStderrLine(stderrRemain.trim());
+            resolve({ code: code ?? -1, stdout, stderr });
+        });
     });
 }
 
@@ -69,9 +99,11 @@ export async function buildRpmBundle({ specs, bundleName = 'rpm-offline', select
     if (!specs.length) throw new Error('specs is required');
     await ensureDnfAvailable();
     bus.emitEvent({ type: 'stage', stage: 'rpm-prepare' });
+    bus.emitEvent({ type: 'log', level: 'info', message: 'dnf利用可否チェックが完了しました。' });
 
     const repos = RPM_REPO_PRESETS.filter((repo) => selectedRepos.includes(repo.id));
     if (!repos.length) throw new Error('at least one repository must be selected');
+    bus.emitEvent({ type: 'log', level: 'info', message: `有効リポジトリ: ${repos.map((r) => r.id).join(', ')}` });
 
     const workRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'rpmdl-'));
     const bundleRoot = path.join(workRoot, bundleName);
@@ -94,10 +126,17 @@ export async function buildRpmBundle({ specs, bundleName = 'rpm-offline', select
     args.push(...specs);
 
     bus.emitEvent({ type: 'stage', stage: 'rpm-download' });
-    const result = await run('dnf', args);
+    bus.emitEvent({ type: 'log', level: 'info', message: `実行コマンド: dnf ${args.join(' ')}` });
+
+    const result = await run('dnf', args, {
+        onStdoutLine: (line) => bus.emitEvent({ type: 'log', level: 'info', message: line }),
+        onStderrLine: (line) => bus.emitEvent({ type: 'log', level: 'stderr', message: line }),
+    });
     if (result.code !== 0) throw new Error(`dnf download failed: ${result.stderr || result.stdout}`);
 
     const downloadedFiles = (await fs.promises.readdir(packagesDir)).filter((name) => name.toLowerCase().endsWith('.rpm')).sort();
+    bus.emitEvent({ type: 'log', level: 'info', message: `ダウンロード完了: ${downloadedFiles.length} rpm` });
+
     const manifest = await buildManifest(downloadedFiles, packagesDir);
     bus.emitEvent({ type: 'manifest-resolved', items: manifest });
 
@@ -111,9 +150,11 @@ export async function buildRpmBundle({ specs, bundleName = 'rpm-offline', select
     await fs.promises.writeFile(path.join(bundleRoot, 'rpm', 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
 
     bus.emitEvent({ type: 'tar-writing' });
+    bus.emitEvent({ type: 'log', level: 'info', message: 'tarアーカイブを作成しています。' });
     const filename = `${bundleName}.tar`;
     const tarPath = path.join(workRoot, filename);
     await tar.c({ cwd: bundleRoot, file: tarPath, sync: true }, ['.']);
+    bus.emitEvent({ type: 'log', level: 'info', message: `アーカイブ作成完了: ${filename}` });
     bus.emitEvent({ type: 'done', filename });
 
     return { tarPath, filename, workRoot, manifest };

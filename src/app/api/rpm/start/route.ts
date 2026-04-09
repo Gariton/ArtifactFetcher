@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
     jobStore.set(jobId, { status: 'queued' });
     globalBusMap.set(jobId, bus);
     bus.emitEvent({ type: 'stage', stage: 'queued' });
+    bus.emitEvent({ type: 'log', level: 'info', message: `ジョブを受け付けました: ${jobId}` });
 
     logRequest(req, `rpm:start job=${jobId}`);
 
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest) {
         let workRoot: string | undefined;
         try {
             jobStore.set(jobId, { status: 'running' });
+            bus.emitEvent({ type: 'log', level: 'info', message: `開始パッケージ: ${packages.join(', ')}` });
             const { tarPath, filename, workRoot: root } = await buildRpmBundle({
                 specs: packages,
                 bundleName,
@@ -44,8 +46,10 @@ export async function POST(req: NextRequest) {
             workRoot = root;
             const objectKey = `${jobId}/${filename}`;
             bus.emitEvent({ type: 'stage', stage: 'uploading-s3' });
+            bus.emitEvent({ type: 'log', level: 'info', message: 'S3へアップロード中です。' });
             await uploadFileToS3({ filePath: tarPath, key: objectKey, contentType: 'application/x-tar' });
             jobStore.set(jobId, { status: 'done', filename, objectKey });
+            bus.emitEvent({ type: 'log', level: 'info', message: 'RPMバンドルの生成が完了しました。' });
         } catch (err: any) {
             jobStore.set(jobId, { status: 'error', error: err?.message || 'failed' });
             bus.emitEvent({ type: 'error', message: err?.message || 'failed' });

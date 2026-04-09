@@ -22,6 +22,8 @@ export function DownloadPane() {
     const [jobId, setJobId] = useState<string | null>(null);
     const [status, setStatus] = useState<Status>('idle');
     const [packages, setPackages] = useState<RpmPackage[]>([]);
+    const [currentStage, setCurrentStage] = useState('idle');
+    const [logs, setLogs] = useState<string[]>([]);
     const [perPackage, setPerPackage] = useState<Record<number, { received: number; total?: number; status: 'waiting' | 'downloading' | 'done' }>>({});
     const [opened, { open, close }] = useDisclosure(false);
     const esRef = useRef<EventSource | null>(null);
@@ -44,6 +46,8 @@ export function DownloadPane() {
         setStatus('idle');
         setPackages([]);
         setPerPackage({});
+        setCurrentStage('idle');
+        setLogs([]);
         esRef.current?.close();
         esRef.current = null;
     }, []);
@@ -85,7 +89,7 @@ export function DownloadPane() {
             esRef.current = es;
             es.onmessage = (ev) => {
                 const data = JSON.parse(ev.data) as ProgressEvent;
-                if (data.type === 'stage') setStatus(data.stage === 'queued' ? 'starting' : 'running');
+                if (data.type === 'stage') { setCurrentStage(data.stage); setStatus(data.stage === 'queued' ? 'starting' : 'running'); }
                 if (data.type === 'manifest-resolved') {
                     const list = data.items as RpmPackage[];
                     setPackages(list);
@@ -101,6 +105,9 @@ export function DownloadPane() {
                 }
                 if (data.type === 'item-done' && data.scope === 'rpm-download') {
                     setPerPackage((prev) => ({ ...prev, [data.index]: { received: prev[data.index]?.total ?? prev[data.index]?.received ?? 0, total: prev[data.index]?.total, status: 'done' } }));
+                }
+                if (data.type === 'log') {
+                    setLogs((prev) => [...prev.slice(-199), `[${data.level === 'stderr' ? 'stderr' : 'info'}] ${data.message}`]);
                 }
                 if (data.type === 'error') {
                     setStatus('error');
@@ -144,7 +151,15 @@ export function DownloadPane() {
                 <Group justify="space-between"><Group gap="xs"><IconStackFront /><Text fw="bold" size="lg">ダウンロード進捗</Text></Group>{status === 'done' ? <Badge color="green" leftSection={<IconCircleCheck size="1em" />} radius="sm">done</Badge> : <Badge color={status === 'error' ? 'red' : 'gray'} leftSection={status === 'error' ? undefined : <Loader size="1em" color="white" />} radius="sm">{status}</Badge>}</Group>
                 {jobId && <Text size="xs" c="dimmed">jobId: {jobId}</Text>}
                 <Stack gap={10} py="xs"><Group justify="space-between"><Text fw="bold">全体の進捗</Text><Text>{overallPercent}%</Text></Group><Progress value={overallPercent} size="lg" radius="xl" /><Text size="xs" c="dimmed">{(totals.received / 1_000_000).toFixed(2)}MB / {(totals.total / 1_000_000).toFixed(2)}MB</Text></Stack>
-                {status === 'starting' || status === 'running' ? <Center h={420}><Loader /></Center> : <ScrollArea h={420}><Stack gap="sm">{packages.map((pkg, idx) => <PipPackageCard key={`${pkg.filename}-${idx}`} index={idx} name={pkg.name} version={pkg.version} filename={pkg.filename} received={perPackage[idx]?.received ?? 0} total={perPackage[idx]?.total} status={perPackage[idx]?.status ?? 'waiting'} />)}</Stack></ScrollArea>}
+                <Stack gap={8}>
+                    <Text size="sm" fw={600}>現在のステージ: {currentStage}</Text>
+                    <ScrollArea h={150} type="auto" offsetScrollbars>
+                        <Stack gap={2}>
+                            {logs.length === 0 ? <Text size="xs" c="dimmed">ログ待機中...</Text> : logs.map((line, idx) => <Text key={`${line}-${idx}`} size="xs" ff="monospace">{line}</Text>)}
+                        </Stack>
+                    </ScrollArea>
+                </Stack>
+                <ScrollArea h={260}><Stack gap="sm">{packages.length === 0 && (status === 'starting' || status === 'running') ? <Center h={120}><Loader /></Center> : packages.map((pkg, idx) => <PipPackageCard key={`${pkg.filename}-${idx}`} index={idx} name={pkg.name} version={pkg.version} filename={pkg.filename} received={perPackage[idx]?.received ?? 0} total={perPackage[idx]?.total} status={perPackage[idx]?.status ?? 'waiting'} />)}</Stack></ScrollArea>
                 <Button leftSection={<IconDownload size="1em" />} fullWidth radius="lg" mt="md" color="dark" disabled={!jobId || status !== 'done'} component="a" href={jobId ? `/api/build/download?jobId=${jobId}` : '#'} target="_blank">ダウンロード</Button>
             </Modal>
         </div>

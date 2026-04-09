@@ -17,6 +17,11 @@ export const GET = async (req: NextRequest) => {
 
             push(': connected\n\n');
 
+            const buffered = bus.getRecentEvents?.() || [];
+            for (const event of buffered) {
+                push(`data: ${JSON.stringify(event)}\n\n`);
+            }
+
             const handler = (e: any) => {
                 push(`data: ${JSON.stringify(e)}\n\n`);
             }

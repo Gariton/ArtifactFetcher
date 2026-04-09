@@ -30,22 +30,41 @@ export type PipPackage = {
     size: number;
 };
 
+export type RpmPackage = {
+    name: string;
+    version: string;
+    filename: string;
+    size: number;
+};
+
 export type ProgressEvent =
     | { type: "stage"; stage: string }
     | { type: "repo-tag-resolved"; items: RepoTag[]} // docker imageのrepoとtagを解決したときに送るやつ
-    | { type: "manifest-resolved"; manifestName?: string; items: Layer[]|LockEntry[]|PipPackage[] }
+    | { type: "manifest-resolved"; manifestName?: string; items: Layer[]|LockEntry[]|PipPackage[]|RpmPackage[] }
     | { type: 'item-start'; index: number; scope?: string; manifestName?: string; digest: string; total?: number }
     | { type: 'item-progress'; index: number; scope?: string; manifestName?: string; received: number; total?: number }
     | { type: 'item-done'; scope?: string; manifestName?: string; index: number }
     | { type: 'item-skip'; scope?: string; manifestName?: string; index: number; reason: string;}
     | { type: 'item-error'; scope?: string; manifestName?: string; index: number; message: string }
     | { type: 'error-summary'; successes: Array<{ name: string; index: number }>; failures: Array<{ name: string; index: number; error: string }> }
+    | { type: 'log'; message: string; level?: 'info' | 'stderr' }
     | { type: 'tar-writing' }
     | { type: 'done'; filename: string }
     | { type: 'error'; message: string };
 
 export class ProgressBus extends EventEmitter {
-    emitEvent(e: ProgressEvent) { this.emit('progress', e); }
+    private history: ProgressEvent[] = [];
+
+    emitEvent(e: ProgressEvent) {
+        this.history.push(e);
+        if (this.history.length > 500) this.history = this.history.slice(-500);
+        this.emit('progress', e);
+    }
+
+    getRecentEvents() {
+        return [...this.history];
+    }
+
     onEvent(handler: (e: ProgressEvent) => void) { this.on('progress', handler) }
 }
 

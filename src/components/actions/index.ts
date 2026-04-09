@@ -19,5 +19,12 @@ export async function getEnvironmentVar() {
         PIP_UPLOAD_PASSWORD: process.env.PIP_UPLOAD_PASSWORD ?? "",
         PIP_UPLOAD_TOKEN: process.env.PIP_UPLOAD_TOKEN ?? "",
         PIP_UPLOAD_SKIP_EXISTING: process.env.PIP_UPLOAD_SKIP_EXISTING ?? "false",
+
+        RPM_UPLOAD: process.env.RPM_UPLOAD ?? "yes",
+        RPM_UPLOAD_REPOSITORY_URL: process.env.RPM_UPLOAD_REPOSITORY_URL ?? "",
+        RPM_UPLOAD_USERNAME: process.env.RPM_UPLOAD_USERNAME ?? "",
+        RPM_UPLOAD_PASSWORD: process.env.RPM_UPLOAD_PASSWORD ?? "",
+        RPM_UPLOAD_TOKEN: process.env.RPM_UPLOAD_TOKEN ?? "",
+        RPM_UPLOAD_METHOD: process.env.RPM_UPLOAD_METHOD ?? "put",
     }
 }

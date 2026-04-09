@@ -30,10 +30,17 @@ export type PipPackage = {
     size: number;
 };
 
+export type RpmPackage = {
+    name: string;
+    version: string;
+    filename: string;
+    size: number;
+};
+
 export type ProgressEvent =
     | { type: "stage"; stage: string }
     | { type: "repo-tag-resolved"; items: RepoTag[]} // docker imageのrepoとtagを解決したときに送るやつ
-    | { type: "manifest-resolved"; manifestName?: string; items: Layer[]|LockEntry[]|PipPackage[] }
+    | { type: "manifest-resolved"; manifestName?: string; items: Layer[]|LockEntry[]|PipPackage[]|RpmPackage[] }
     | { type: 'item-start'; index: number; scope?: string; manifestName?: string; digest: string; total?: number }
     | { type: 'item-progress'; index: number; scope?: string; manifestName?: string; received: number; total?: number }
     | { type: 'item-done'; scope?: string; manifestName?: string; index: number }

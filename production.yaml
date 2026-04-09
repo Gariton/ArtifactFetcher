@@ -1,6 +1,6 @@
 services:
   ArtifactFetcher:
-    image: gariton/artifactfetcher:latest
+    image: gariton/artifactfetcher:${IMAGE_TAG:-latest}
     container_name: ArtifactFetcher_production
     tty: true
     ports:

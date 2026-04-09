@@ -38,6 +38,11 @@ type RpmNevra = {
     arch: string;
 };
 
+type RpmCommandPair = {
+    downloadCmd: 'dnf' | 'dnf5';
+    repoqueryCmd: 'dnf' | 'dnf5';
+};
+
 function streamLines(chunk: string, remainder: string, onLine?: (line: string) => void) {
     if (!onLine) return remainder + chunk;
     const text = remainder + chunk;
@@ -81,11 +86,34 @@ function sanitizeFolderName(name: string) {
     return name.replace(/[\\/:*?"<>|]/g, '_').trim();
 }
 
-async function ensureDnfAvailable() {
-    const check = await run('dnf', ['--version']).catch(() => null);
-    if (!check || check.code !== 0) throw new Error('dnf command is required for rpm download. Please install dnf + dnf-plugins-core.');
-    const hasDownload = await run('dnf', ['download', '--help']).catch(() => null);
-    if (!hasDownload || hasDownload.code !== 0) throw new Error('dnf download command is required. Please install dnf-plugins-core.');
+async function resolveRpmCommands(): Promise<RpmCommandPair> {
+    const hasDnf = await run('dnf', ['--version']).catch(() => null);
+    const hasDnf5 = await run('dnf5', ['--version']).catch(() => null);
+    if ((!hasDnf || hasDnf.code !== 0) && (!hasDnf5 || hasDnf5.code !== 0)) {
+        throw new Error('dnf/dnf5 command is required for rpm download. Please install dnf or dnf5.');
+    }
+
+    const dnfDownload = await run('dnf', ['download', '--help']).catch(() => null);
+    const dnf5Download = await run('dnf5', ['download', '--help']).catch(() => null);
+    const dnfRepoquery = await run('dnf', ['repoquery', '--help']).catch(() => null);
+    const dnf5Repoquery = await run('dnf5', ['repoquery', '--help']).catch(() => null);
+
+    const downloadCmd = dnfDownload && dnfDownload.code === 0
+        ? 'dnf'
+        : dnf5Download && dnf5Download.code === 0
+            ? 'dnf5'
+            : null;
+    const repoqueryCmd = dnfRepoquery && dnfRepoquery.code === 0
+        ? 'dnf'
+        : dnf5Repoquery && dnf5Repoquery.code === 0
+            ? 'dnf5'
+            : null;
+
+    if (!downloadCmd || !repoqueryCmd) {
+        throw new Error('rpm download prerequisites are missing. Install dnf-plugins-core or dnf5 plugins (download/repoquery).');
+    }
+
+    return { downloadCmd, repoqueryCmd };
 }
 
 async function queryNevra(filePath: string): Promise<RpmNevra | null> {
@@ -98,17 +126,17 @@ async function queryNevra(filePath: string): Promise<RpmNevra | null> {
     return { name, version, release, arch };
 }
 
-async function queryRepoId(nevra: RpmNevra, repoIds: string[]): Promise<string | undefined> {
+async function queryRepoId(nevra: RpmNevra, repoIds: string[], repoqueryCmd: 'dnf'|'dnf5'): Promise<string | undefined> {
     const args: string[] = ['repoquery', '--quiet', '--disablerepo=*'];
     for (const id of repoIds) args.push('--enablerepo', id);
     args.push('--qf', '%{repoid}', `${nevra.name}-${nevra.version}-${nevra.release}.${nevra.arch}`);
-    const result = await run('dnf', args).catch(() => null);
+    const result = await run(repoqueryCmd, args).catch(() => null);
     if (!result || result.code !== 0) return undefined;
     const first = result.stdout.split(/\r?\n/).map((s) => s.trim()).find(Boolean);
     return first || undefined;
 }
 
-async function buildManifestAndLayout(files: string[], packagesDir: string, outputByRepoRoot: string, repos: RpmRepoPreset[], bus: ProgressBus): Promise<RpmPackage[]> {
+async function buildManifestAndLayout(files: string[], packagesDir: string, outputByRepoRoot: string, repos: RpmRepoPreset[], repoqueryCmd: 'dnf'|'dnf5', bus: ProgressBus): Promise<RpmPackage[]> {
     const repoIds = repos.map((r) => r.id);
     const repoMap = new Map(repos.map((r) => [r.id, r]));
     const manifest: RpmPackage[] = [];
@@ -117,7 +145,7 @@ async function buildManifestAndLayout(files: string[], packagesDir: string, outp
         const fullPath = path.join(packagesDir, file);
         const stat = await fs.promises.stat(fullPath);
         const nevra = await queryNevra(fullPath);
-        const repoId = nevra ? await queryRepoId(nevra, repoIds) : undefined;
+        const repoId = nevra ? await queryRepoId(nevra, repoIds, repoqueryCmd) : undefined;
         const repo = repoId ? repoMap.get(repoId) : undefined;
 
         const raw = file.replace(/\.rpm$/i, '');
@@ -150,9 +178,9 @@ async function buildManifestAndLayout(files: string[], packagesDir: string, outp
 
 export async function buildRpmBundle({ specs, bundleName = 'rpm-offline', selectedRepos, resolveDependencies = true, bus }: BuildRpmBundleOptions) {
     if (!specs.length) throw new Error('specs is required');
-    await ensureDnfAvailable();
+    const { downloadCmd, repoqueryCmd } = await resolveRpmCommands();
     bus.emitEvent({ type: 'stage', stage: 'rpm-prepare' });
-    bus.emitEvent({ type: 'log', level: 'info', message: 'dnf利用可否チェックが完了しました。' });
+    bus.emitEvent({ type: 'log', level: 'info', message: `RPMツール利用可否チェック完了: download=${downloadCmd}, repoquery=${repoqueryCmd}` });
 
     const repos = RPM_REPO_PRESETS.filter((repo) => selectedRepos.includes(repo.id));
     if (!repos.length) throw new Error('at least one repository must be selected');
@@ -181,19 +209,19 @@ export async function buildRpmBundle({ specs, bundleName = 'rpm-offline', select
     args.push(...specs);
 
     bus.emitEvent({ type: 'stage', stage: 'rpm-download' });
-    bus.emitEvent({ type: 'log', level: 'info', message: `実行コマンド: dnf ${args.join(' ')}` });
+    bus.emitEvent({ type: 'log', level: 'info', message: `実行コマンド: ${downloadCmd} ${args.join(' ')}` });
 
-    const result = await run('dnf', args, {
+    const result = await run(downloadCmd, args, {
         onStdoutLine: (line) => bus.emitEvent({ type: 'log', level: 'info', message: line }),
         onStderrLine: (line) => bus.emitEvent({ type: 'log', level: 'stderr', message: line }),
     });
-    if (result.code !== 0) throw new Error(`dnf download failed: ${result.stderr || result.stdout}`);
+    if (result.code !== 0) throw new Error(`${downloadCmd} download failed: ${result.stderr || result.stdout}`);
 
     const downloadedFiles = (await fs.promises.readdir(packagesDir)).filter((name) => name.toLowerCase().endsWith('.rpm')).sort();
     bus.emitEvent({ type: 'log', level: 'info', message: `ダウンロード完了: ${downloadedFiles.length} rpm` });
     bus.emitEvent({ type: 'stage', stage: 'rpm-classify-by-repository' });
 
-    const manifest = await buildManifestAndLayout(downloadedFiles, packagesDir, perRepoDir, repos, bus);
+    const manifest = await buildManifestAndLayout(downloadedFiles, packagesDir, perRepoDir, repos, repoqueryCmd, bus);
     bus.emitEvent({ type: 'manifest-resolved', items: manifest });
 
     for (let i = 0; i < manifest.length; i += 1) {

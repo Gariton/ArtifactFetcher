@@ -9,13 +9,17 @@ FROM node:24.5-trixie-slim AS base
 # - ca-certificates: TLS
 # - git: npm/pip で git 依存を取る可能性に配慮（不要なら削ってOK）
 # - curl: rpmアップロード時のHTTP転送に利用
-# - dnf + dnf-plugins-core + rpm: rpmダウンロード機能に必要
+# - dnf/dnf5 + plugins + rpm: rpmダウンロード機能に必要
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         python3 python3-pip python3-venv twine \
         ca-certificates git curl \
-        dnf dnf-plugins-core rpm; \
+        dnf rpm; \
+    apt-get install -y --no-install-recommends dnf-plugins-core || true; \
+    apt-get install -y --no-install-recommends dnf5 dnf5-plugins || true; \
+    (dnf download --help >/dev/null 2>&1 || dnf5 download --help >/dev/null 2>&1); \
+    (dnf repoquery --help >/dev/null 2>&1 || dnf5 repoquery --help >/dev/null 2>&1); \
     rm -rf /var/lib/apt/lists/*
 
 # =========================

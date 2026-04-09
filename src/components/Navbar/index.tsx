@@ -26,6 +26,12 @@ export const AppNavbar = () => {
             </Anchor>
             <Anchor
                 className={classes.link}
+                href="/rpm"
+            >
+                rpm
+            </Anchor>
+            <Anchor
+                className={classes.link}
                 href="/admin"
             >
                 管理

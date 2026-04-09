@@ -1,7 +1,7 @@
 'use client';
 import { ManagerCatalog, type ManagerEntry } from "@/components/ManagerCatalog";
 import { Center, Container, Space, Stack, Title } from "@mantine/core";
-import { IconBrandDocker, IconBrandNpm, IconBrandPython } from "@tabler/icons-react";
+import { IconBrandDocker, IconBrandNpm, IconBrandPython, IconBox } from "@tabler/icons-react";
 import Image from "next/image";
 
 const managers: ManagerEntry[] = [
@@ -28,6 +28,14 @@ const managers: ManagerEntry[] = [
         href: "/pip",
         Icon: IconBrandPython,
         color: "violet",
+    },
+    {
+        id: "rpm",
+        name: "rpm package",
+        description: "公式リポジトリや EPEL から依存関係を含めた rpm パッケージを収集し、任意の RPM リポジトリへアップロードできます。",
+        href: "/rpm",
+        Icon: IconBox,
+        color: "yellow",
     },
 ];
 

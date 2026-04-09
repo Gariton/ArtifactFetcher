@@ -53,7 +53,18 @@ export type ProgressEvent =
     | { type: 'error'; message: string };
 
 export class ProgressBus extends EventEmitter {
-    emitEvent(e: ProgressEvent) { this.emit('progress', e); }
+    private history: ProgressEvent[] = [];
+
+    emitEvent(e: ProgressEvent) {
+        this.history.push(e);
+        if (this.history.length > 500) this.history = this.history.slice(-500);
+        this.emit('progress', e);
+    }
+
+    getRecentEvents() {
+        return [...this.history];
+    }
+
     onEvent(handler: (e: ProgressEvent) => void) { this.on('progress', handler) }
 }
 

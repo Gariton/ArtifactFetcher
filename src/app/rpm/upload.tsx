@@ -178,7 +178,12 @@ export function UploadPane({ env }: { env: EnvProps }) {
         <div>
             <Alert variant="light" color="yellow" title="注意" radius="lg" my="xl">アップロード先RPMリポジトリは URL/認証方式が実装により異なります。PUT/POST を切り替えて利用してください。</Alert>
             <Stack>
-                <Dropzone accept={['application/x-redhat-package-manager', 'application/octet-stream']} onDrop={(files) => form.setFieldValue('files', [...form.getValues().files, ...files])} onReject={() => setError('rpmファイルのみアップロードできます')} disabled={loading}>
+                <Dropzone
+                    accept={['.rpm', 'application/x-rpm', 'application/x-redhat-package-manager', 'application/octet-stream']}
+                    onDrop={(files) => form.setFieldValue('files', [...form.getValues().files, ...files])}
+                    onReject={() => setError('rpmファイルのみアップロードできます')}
+                    disabled={loading}
+                >
                     <Group justify="center" gap="xl" mih={120} style={{ pointerEvents: 'none' }}>
                         <Dropzone.Accept><IconDownload size={52} color="var(--mantine-color-blue-6)" stroke={1.5} /></Dropzone.Accept>
                         <Dropzone.Reject><IconX size={52} color="var(--mantine-color-red-6)" stroke={1.5} /></Dropzone.Reject>

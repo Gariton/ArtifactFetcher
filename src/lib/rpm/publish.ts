@@ -4,6 +4,7 @@ export type RpmUploadMethod = 'put' | 'post';
 
 export type UploadRpmOptions = {
     filePath: string;
+    fileName?: string;
     repositoryUrl: string;
     method?: RpmUploadMethod;
     username?: string;
@@ -12,9 +13,9 @@ export type UploadRpmOptions = {
     ignoreTlsVerify?: boolean;
 };
 
-export async function uploadRpmFile({ filePath, repositoryUrl, method = 'put', username, password, token, ignoreTlsVerify = false }: UploadRpmOptions) {
+export async function uploadRpmFile({ filePath, fileName, repositoryUrl, method = 'put', username, password, token, ignoreTlsVerify = false }: UploadRpmOptions) {
     const normalizedBase = repositoryUrl.endsWith('/') ? repositoryUrl : `${repositoryUrl}/`;
-    const filename = filePath.split('/').pop() || 'package.rpm';
+    const filename = fileName || filePath.split('/').pop() || 'package.rpm';
     const targetUrl = `${normalizedBase}${encodeURIComponent(filename)}`;
 
     const args: string[] = ['--silent', '--show-error', '--fail', '--location', '-X', method.toUpperCase()];

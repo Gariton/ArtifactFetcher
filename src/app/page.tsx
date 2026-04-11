@@ -1,7 +1,7 @@
 'use client';
 import { ManagerCatalog, type ManagerEntry } from "@/components/ManagerCatalog";
 import { Center, Container, Space, Stack, Title } from "@mantine/core";
-import { IconBrandDocker, IconBrandNpm, IconBrandPython, IconBox } from "@tabler/icons-react";
+import { IconBrandDocker, IconBrandNpm, IconBrandPython, IconBox, IconBrain } from "@tabler/icons-react";
 import Image from "next/image";
 
 const managers: ManagerEntry[] = [
@@ -28,6 +28,14 @@ const managers: ManagerEntry[] = [
         href: "/pip",
         Icon: IconBrandPython,
         color: "violet",
+    },
+    {
+        id: "hf",
+        name: "Hugging Face model",
+        description: "Hugging Face から GGUF など必要なファイルだけを選択して取得し、Ollama 等のローカル実行に使えるアーカイブを生成できます。",
+        href: "/hf",
+        Icon: IconBrain,
+        color: "teal",
     },
     {
         id: "rpm",

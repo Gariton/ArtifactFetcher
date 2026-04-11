@@ -32,6 +32,12 @@ export const AppNavbar = () => {
             </Anchor>
             <Anchor
                 className={classes.link}
+                href="/hf"
+            >
+                huggingface
+            </Anchor>
+            <Anchor
+                className={classes.link}
                 href="/admin"
             >
                 管理

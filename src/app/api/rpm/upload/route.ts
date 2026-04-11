@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
             jobStore.set(jobId, { status: 'running', filename: file.name });
             bus.emitEvent({ type: 'item-start', scope: 'rpm-publish', index: file.index, digest: file.name });
             try {
-                await uploadRpmFile({ filePath: file.tmpPath, repositoryUrl, method, username, password, token, ignoreTlsVerify });
+                await uploadRpmFile({ filePath: file.tmpPath, fileName: file.name, repositoryUrl, method, username, password, token, ignoreTlsVerify });
                 successes.push({ name: file.name, index: file.index });
                 bus.emitEvent({ type: 'item-done', scope: 'rpm-publish', index: file.index });
             } catch (err: any) {

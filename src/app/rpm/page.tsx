@@ -14,6 +14,7 @@ type RpmEnv = {
     RPM_UPLOAD_PASSWORD: string;
     RPM_UPLOAD_TOKEN: string;
     RPM_UPLOAD_METHOD: string;
+    RPM_UPLOAD_IGNORE_TLS_VERIFY: string;
 };
 
 export default function RpmPage() {
@@ -24,6 +25,7 @@ export default function RpmPage() {
         RPM_UPLOAD_PASSWORD: '',
         RPM_UPLOAD_TOKEN: '',
         RPM_UPLOAD_METHOD: 'put',
+        RPM_UPLOAD_IGNORE_TLS_VERIFY: '',
     });
 
     useEffect(() => {
@@ -35,6 +37,7 @@ export default function RpmPage() {
                 RPM_UPLOAD_PASSWORD: vars.RPM_UPLOAD_PASSWORD ?? '',
                 RPM_UPLOAD_TOKEN: vars.RPM_UPLOAD_TOKEN ?? '',
                 RPM_UPLOAD_METHOD: vars.RPM_UPLOAD_METHOD ?? 'put',
+                RPM_UPLOAD_IGNORE_TLS_VERIFY: vars.RPM_UPLOAD_IGNORE_TLS_VERIFY ?? '',
             });
         });
     }, []);

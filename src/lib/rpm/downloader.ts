@@ -12,6 +12,13 @@ export type RpmRepoPreset = {
     baseUrl: string;
 };
 
+export type RpmRepository = {
+    id: string;
+    label: string;
+    folderName: string;
+    baseUrl: string;
+};
+
 export const RPM_REPO_PRESETS: RpmRepoPreset[] = [
     { id: 'centos-stream-9-baseos', label: 'CentOS Stream 9 BaseOS (official)', folderName: 'CentOS Stream BaseOS', baseUrl: 'https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/' },
     { id: 'centos-stream-9-appstream', label: 'CentOS Stream 9 AppStream (official)', folderName: 'CentOS Stream AppStream', baseUrl: 'https://mirror.stream.centos.org/9-stream/AppStream/x86_64/os/' },
@@ -21,7 +28,7 @@ export const RPM_REPO_PRESETS: RpmRepoPreset[] = [
 type BuildRpmBundleOptions = {
     specs: string[];
     bundleName?: string;
-    selectedRepos: string[];
+    repositories: RpmRepository[];
     resolveDependencies?: boolean;
     bus: ProgressBus;
 };
@@ -136,7 +143,7 @@ async function queryRepoId(nevra: RpmNevra, repoIds: string[], repoqueryCmd: 'dn
     return first || undefined;
 }
 
-async function buildManifestAndLayout(files: string[], packagesDir: string, outputByRepoRoot: string, repos: RpmRepoPreset[], repoqueryCmd: 'dnf'|'dnf5', bus: ProgressBus): Promise<RpmPackage[]> {
+async function buildManifestAndLayout(files: string[], packagesDir: string, outputByRepoRoot: string, repos: RpmRepository[], repoqueryCmd: 'dnf'|'dnf5', bus: ProgressBus): Promise<RpmPackage[]> {
     const repoIds = repos.map((r) => r.id);
     const repoMap = new Map(repos.map((r) => [r.id, r]));
     const manifest: RpmPackage[] = [];
@@ -176,13 +183,13 @@ async function buildManifestAndLayout(files: string[], packagesDir: string, outp
     return manifest;
 }
 
-export async function buildRpmBundle({ specs, bundleName = 'rpm-offline', selectedRepos, resolveDependencies = true, bus }: BuildRpmBundleOptions) {
+export async function buildRpmBundle({ specs, bundleName = 'rpm-offline', repositories, resolveDependencies = true, bus }: BuildRpmBundleOptions) {
     if (!specs.length) throw new Error('specs is required');
     const { downloadCmd, repoqueryCmd } = await resolveRpmCommands();
     bus.emitEvent({ type: 'stage', stage: 'rpm-prepare' });
     bus.emitEvent({ type: 'log', level: 'info', message: `RPMツール利用可否チェック完了: download=${downloadCmd}, repoquery=${repoqueryCmd}` });
 
-    const repos = RPM_REPO_PRESETS.filter((repo) => selectedRepos.includes(repo.id));
+    const repos = repositories;
     if (!repos.length) throw new Error('at least one repository must be selected');
     bus.emitEvent({ type: 'log', level: 'info', message: `有効リポジトリ: ${repos.map((r) => r.id).join(', ')}` });
 

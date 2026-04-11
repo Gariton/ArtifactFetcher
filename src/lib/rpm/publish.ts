@@ -9,14 +9,16 @@ export type UploadRpmOptions = {
     username?: string;
     password?: string;
     token?: string;
+    ignoreTlsVerify?: boolean;
 };
 
-export async function uploadRpmFile({ filePath, repositoryUrl, method = 'put', username, password, token }: UploadRpmOptions) {
+export async function uploadRpmFile({ filePath, repositoryUrl, method = 'put', username, password, token, ignoreTlsVerify = false }: UploadRpmOptions) {
     const normalizedBase = repositoryUrl.endsWith('/') ? repositoryUrl : `${repositoryUrl}/`;
     const filename = filePath.split('/').pop() || 'package.rpm';
     const targetUrl = `${normalizedBase}${encodeURIComponent(filename)}`;
 
     const args: string[] = ['--silent', '--show-error', '--fail', '--location', '-X', method.toUpperCase()];
+    if (ignoreTlsVerify) args.push('--insecure');
 
     if (token) {
         args.push('-H', `Authorization: Bearer ${token}`);

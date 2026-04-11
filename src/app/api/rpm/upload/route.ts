@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
     const password = searchParams.get('password') || undefined;
     const token = searchParams.get('token')?.trim() || searchParams.get('authToken')?.trim() || undefined;
     const method = ((searchParams.get('method') || 'put').toLowerCase() === 'post' ? 'post' : 'put') as RpmUploadMethod;
+    const ignoreTlsVerify = ['1', 'true', 'yes', 'on'].includes((searchParams.get('ignoreTlsVerify') || '').toLowerCase());
 
     if (!jobId) return new Response(JSON.stringify({ error: 'missing jobId' }), { status: 400 });
     if (!repositoryUrl) return new Response(JSON.stringify({ error: 'missing repositoryUrl' }), { status: 400 });
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
             jobStore.set(jobId, { status: 'running', filename: file.name });
             bus.emitEvent({ type: 'item-start', scope: 'rpm-publish', index: file.index, digest: file.name });
             try {
-                await uploadRpmFile({ filePath: file.tmpPath, repositoryUrl, method, username, password, token });
+                await uploadRpmFile({ filePath: file.tmpPath, repositoryUrl, method, username, password, token, ignoreTlsVerify });
                 successes.push({ name: file.name, index: file.index });
                 bus.emitEvent({ type: 'item-done', scope: 'rpm-publish', index: file.index });
             } catch (err: any) {

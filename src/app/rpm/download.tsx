@@ -16,6 +16,42 @@ const repoOptions = [
 
 type Status = 'idle' | 'starting' | 'running' | 'done' | 'error';
 
+type CustomRepo = {
+    id?: string;
+    label?: string;
+    folderName?: string;
+    baseUrl: string;
+};
+
+function parseCustomRepositories(input: string): { repositories: CustomRepo[]; errors: string[] } {
+    const lines = input
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+    const repositories: CustomRepo[] = [];
+    const errors: string[] = [];
+    lines.forEach((line, index) => {
+        const cols = line.split('|').map((part) => part.trim());
+        const [id, label, baseUrl] = cols.length >= 3 ? cols : ['', cols[0] || '', cols[0] || ''];
+        if (!baseUrl) {
+            errors.push(`${index + 1}行目: URLが空です`);
+            return;
+        }
+        if (!/^https?:\/\//i.test(baseUrl)) {
+            errors.push(`${index + 1}行目: URLは http:// または https:// で始めてください`);
+            return;
+        }
+        repositories.push({
+            id: id || undefined,
+            label: label || undefined,
+            folderName: label || id || undefined,
+            baseUrl,
+        });
+    });
+    return { repositories, errors };
+}
+
 export function DownloadPane() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -33,11 +69,20 @@ export function DownloadPane() {
             packages: '',
             bundleName: 'rpm-offline',
             repositories: repoOptions.map((o) => o.value),
+            customRepositories: '',
             resolveDependencies: true,
         },
         validate: {
             packages: (v) => (v.trim() ? null : 'rpm package名を入力してください'),
-            repositories: (v) => (v.length ? null : 'リポジトリを1つ以上選択してください'),
+            repositories: (v, values) => {
+                if (v.length) return null;
+                const { repositories } = parseCustomRepositories(values.customRepositories);
+                return repositories.length ? null : 'リポジトリを1つ以上選択/入力してください';
+            },
+            customRepositories: (v) => {
+                const parsed = parseCustomRepositories(v);
+                return parsed.errors[0] ?? null;
+            },
         },
     });
 
@@ -70,6 +115,10 @@ export function DownloadPane() {
 
         try {
             const specs = values.packages.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+            const customRepositoriesParsed = parseCustomRepositories(values.customRepositories);
+            if (customRepositoriesParsed.errors.length) {
+                throw new Error(customRepositoriesParsed.errors[0]);
+            }
             const res = await fetch('/api/rpm/start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -77,6 +126,7 @@ export function DownloadPane() {
                     packages: specs,
                     bundleName: values.bundleName,
                     repositories: values.repositories,
+                    customRepositories: customRepositoriesParsed.repositories,
                     resolveDependencies: values.resolveDependencies,
                 }),
             });
@@ -140,6 +190,15 @@ export function DownloadPane() {
                     <Checkbox.Group label="Repositories" key={form.key('repositories')} {...form.getInputProps('repositories')}>
                         <Stack mt="xs">{repoOptions.map((repo) => <Checkbox key={repo.value} value={repo.value} label={repo.label} />)}</Stack>
                     </Checkbox.Group>
+                    <Textarea
+                        label="Custom repositories"
+                        description="1行1件。URLのみ、または `id|label|url` 形式で入力"
+                        placeholder={'https://download.example.com/rhel/8/BaseOS/x86_64/os/\ncustom-rhel8-appstream|RHEL 8 AppStream|https://download.example.com/rhel/8/AppStream/x86_64/os/'}
+                        minRows={3}
+                        key={form.key('customRepositories')}
+                        {...form.getInputProps('customRepositories')}
+                        disabled={loading}
+                    />
                     <Checkbox label="依存関係もダウンロード (--resolve --alldeps)" key={form.key('resolveDependencies')} {...form.getInputProps('resolveDependencies', { type: 'checkbox' })} />
                     <Space h="md" />
                     <Button size="lg" radius="lg" type="submit" loading={loading}>Download</Button>

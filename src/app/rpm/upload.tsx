@@ -4,7 +4,7 @@ import { PackageUploadModal } from '@/components/PackageUpload/Modal';
 import { FileItem } from '@/components/Upload/FileItem';
 import { ProgressEvent } from '@/lib/progressBus';
 import { useRetryableEventSource } from '@/lib/useRetryableEventSource';
-import { Accordion, Alert, Button, Group, PasswordInput, Radio, Space, Stack, Text, TextInput } from '@mantine/core';
+import { Accordion, Alert, Button, Checkbox, Group, PasswordInput, Radio, Space, Stack, Text, TextInput } from '@mantine/core';
 import { Dropzone } from '@mantine/dropzone';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
@@ -19,6 +19,7 @@ type EnvProps = {
     RPM_UPLOAD_PASSWORD: string;
     RPM_UPLOAD_TOKEN: string;
     RPM_UPLOAD_METHOD: string;
+    RPM_UPLOAD_IGNORE_TLS_VERIFY: string;
 };
 
 type PerFileState = { received: number; total?: number; status: string };
@@ -30,6 +31,7 @@ type FormValues = {
     password: string;
     token: string;
     method: 'put' | 'post';
+    ignoreTlsVerify: boolean;
 };
 
 const FLUSH_INTERVAL = 250;
@@ -75,6 +77,7 @@ export function UploadPane({ env }: { env: EnvProps }) {
             password: env.RPM_UPLOAD_PASSWORD || '',
             token: env.RPM_UPLOAD_TOKEN || '',
             method: env.RPM_UPLOAD_METHOD === 'post' ? 'post' : 'put',
+            ignoreTlsVerify: ['1', 'true', 'yes', 'on'].includes((env.RPM_UPLOAD_IGNORE_TLS_VERIFY || '').toLowerCase()),
         },
     });
 
@@ -152,6 +155,7 @@ export function UploadPane({ env }: { env: EnvProps }) {
         if (current.username.trim()) params.set('username', current.username.trim());
         if (current.password) params.set('password', current.password);
         if (current.token.trim()) params.set('token', current.token.trim());
+        if (current.ignoreTlsVerify) params.set('ignoreTlsVerify', 'true');
 
         try {
             const res = await fetch(`/api/rpm/upload?${params.toString()}`, { method: 'POST', body: fd });
@@ -199,6 +203,7 @@ export function UploadPane({ env }: { env: EnvProps }) {
                     <TextInput label="Username" key={form.key('username')} {...form.getInputProps('username')} disabled={loading} />
                     <PasswordInput label="Password" key={form.key('password')} {...form.getInputProps('password')} disabled={loading} />
                     <PasswordInput label="Bearer Token" key={form.key('token')} {...form.getInputProps('token')} disabled={loading} />
+                    <Checkbox label="証明書の検証を無視する (curl --insecure)" key={form.key('ignoreTlsVerify')} {...form.getInputProps('ignoreTlsVerify', { type: 'checkbox' })} disabled={loading} />
                 </Stack></Accordion.Panel></Accordion.Item></Accordion>
 
                 <Space h="md" />

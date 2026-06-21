@@ -11,10 +11,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export const POST = async (req: NextRequest) => {
-    const { repo, tag, platform } = await req.json();
+    const { repo, tag, platform, registry, username, password, insecureTLS } = await req.json();
     if (!repo || !tag) return new Response(JSON.stringify({error: 'Missing repo or tag'}), {status: 400});
 
-    logRequest(req, `docker:start ${repo}:${tag} platform=${platform || 'linux/amd64'}`);
+    // 認証情報はリクエストボディ（JSON）でのみ受け取り、ログには残さない。
+    logRequest(req, `docker:start ${registry ? registry + '/' : ''}${repo}:${tag} platform=${platform || 'linux/amd64'}`);
 
     const jobId = nanoid();
     jobStore.set(jobId, { status: 'queued' });
@@ -29,7 +30,16 @@ export const POST = async (req: NextRequest) => {
             jobStore.set(jobId, { status: 'running' });
             let workRoot: string | undefined;
             try {
-                const { tarPath, filename, workRoot: tmpRoot } = await buildDockerImageTar({ repository: repo, tag, platform: platform || 'linux/amd64', bus });
+                const { tarPath, filename, workRoot: tmpRoot } = await buildDockerImageTar({
+                    repository: repo,
+                    tag,
+                    platform: platform || 'linux/amd64',
+                    registry: registry || undefined,
+                    username: username || undefined,
+                    password: password || undefined,
+                    insecureTLS: Boolean(insecureTLS),
+                    bus,
+                });
                 workRoot = tmpRoot;
                 const objectKey = `${jobId}/${filename}`;
                 bus.emitEvent({ type: 'stage', stage: 'uploading-s3' });

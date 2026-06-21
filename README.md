@@ -171,13 +171,19 @@ npm run download -- npm next ^18 --host https://downloader.example.com --out dow
 ## 機能詳細
 
 ### Docker イメージのダウンロード（tar）
-- Docker Hub の **token 取得 → manifest 解決（platform 対応）→ 各 layer/config を検証付きでダウンロード**  
-- `manifest.json` を `docker load` 形式に整形し、`.tar` を生成  
+- **任意の Docker Registry v2 互換レジストリ**に対応（Docker Hub / ghcr.io / quay.io / 社内レジストリ等）  
+  - `WWW-Authenticate` チャレンジを解析し、**Bearer トークン取得**または **Basic 認証**を自動でネゴシエート  
+  - `registry` 省略時は Docker Hub。公式イメージ（スラッシュ無し）は `library/` を自動補完  
+  - `registry` 空欄でも `ghcr.io/owner/name` のように **repository へホストを埋め込む**書式を解釈  
+  - プライベートイメージ向けに **username / password（またはトークン）** を指定可、自己署名証明書向けに **TLS 検証スキップ** に対応  
+- manifest 解決（platform 対応）→ 各 layer/config を **digest 検証付き**でダウンロード  
+- `manifest.json` を `docker load` 形式に整形し、`.tar` を生成（Docker Hub 以外はホスト名付きで `RepoTags` を付与）  
 - 生成した `.tar` は S3 (MinIO) にアップロードし、クライアントからは S3 経由でストリーミングダウンロード  
 - 進捗は **layer ごと**にバイト数で SSE 送出  
 
 #### API（サーバ内）
-- `POST /api/build/start` … { repo, tag, platform } → { jobId }  
+- `POST /api/docker/start` … { repo, tag, platform, registry?, username?, password?, insecureTLS? } → { jobId }  
+  - 認証情報は **リクエストボディ（JSON）でのみ**受け取り、ログには残さない  
 - `GET  /api/build/progress?jobId=...` … SSE  
 - `GET  /api/build/download?jobId=...` … `.tar` ダウンロード  
 

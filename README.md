@@ -102,7 +102,10 @@ docker buildx build \
 | `S3_REGION` | `us-east-1` | S3 クライアントに渡すリージョン（MinIO でも必須） |
 | `S3_FORCE_PATH_STYLE` | `true` | パススタイルアクセスを強制するか（MinIO は `true` 推奨） |
 | `APP_AUTH_USER` |  | 設定すると全ルートに Basic 認証を要求（`APP_AUTH_PASSWORD` と併用）。公開設置時は必須を推奨 |
-| `APP_AUTH_PASSWORD` |  | Basic 認証のパスワード |
+| `APP_AUTH_PASSWORD` |  | 全体 Basic 認証のパスワード |
+| `ADMIN_ENABLED` | `false` | `true/1/on/yes` で `/admin`（リクエストログ）を有効化 |
+| `ADMIN_AUTH_USER` |  | 設定すると `/admin` 以下に専用の Basic 認証を要求（`ADMIN_AUTH_PASSWORD` と併用）。全体認証とは独立 |
+| `ADMIN_AUTH_PASSWORD` |  | 管理画面 Basic 認証のパスワード |
 | `JOB_TTL_MS` | `1800000` | 完了/失敗したジョブと進捗バスを破棄するまでの保持時間（ミリ秒） |
 | `JOB_SWEEP_INTERVAL_MS` | `300000` | 期限切れジョブを掃除する間隔（ミリ秒） |
 

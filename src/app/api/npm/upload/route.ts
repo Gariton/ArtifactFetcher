@@ -7,6 +7,7 @@ import Busboy from 'busboy';
 import { jobStore } from '@/lib/jobStore';
 import { ProgressBus, globalBusMap } from '@/lib/progressBus';
 import { logRequest } from '@/lib/requestLog';
+import { readUploadAuth } from '@/lib/authHeaders';
 import { publishTarball } from '@/lib/npm/publish';
 
 export const runtime = 'nodejs';
@@ -29,9 +30,7 @@ export async function POST(req: NextRequest) {
     } catch {
         return new Response(JSON.stringify({ error: 'invalid repositoryUrl' }), { status: 400 });
     }
-    const username = searchParams.get('username') || undefined;
-    const password = searchParams.get('password') || undefined;
-    const authToken = searchParams.get('authToken') || undefined;
+    const { username, password, token: authToken } = readUploadAuth(req.headers);
     logRequest(req, `npm:upload job=${jobId} -> ${baseUrl.toString()}`);
 
     const contentType = req.headers.get('content-type') || '';

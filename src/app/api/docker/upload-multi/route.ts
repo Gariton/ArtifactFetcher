@@ -9,6 +9,7 @@ import { jobStore } from '@/lib/jobStore';
 import { FileInfo, ProgressBus, RepoTag, globalBusMap as busMap } from '@/lib/progressBus';
 import { pushImageToRegistry } from '@/lib/docker/registryPusher';
 import { readLoadManifestFromTar, repoTagFromRepoTags } from '@/lib/docker/readDockerLoadManifest';
+import { readUploadAuth } from '@/lib/authHeaders';
 
 
 export const runtime = 'nodejs';
@@ -34,13 +35,14 @@ export async function POST(req: NextRequest) {
     if (!jobId) {
         return new Response(JSON.stringify({error: 'missing jobId'}), {status: 400});
     }
+    const { username, password } = readUploadAuth(req.headers);
     const ctx: PushCtx = {
         jobId,
         registry:  searchParams.get('registry')   || '',
         repository: (searchParams.get('repository') || '').toLowerCase(),
         tag:       searchParams.get('tag') || undefined,
-        username:  searchParams.get('username') || undefined,
-        password:  searchParams.get('password') || undefined,
+        username,
+        password,
         insecureTLS: (searchParams.get('insecureTLS') || 'false') === 'true',
         concurrency: Number(searchParams.get('concurrency') || '1'),
     };

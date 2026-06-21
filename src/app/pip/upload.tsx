@@ -3,6 +3,7 @@
 import { PackageUploadModal } from '@/components/PackageUpload/Modal';
 import { ProgressEvent } from '@/lib/progressBus';
 import { useRetryableEventSource } from '@/lib/useRetryableEventSource';
+import { buildAuthHeaders } from '@/lib/authHeaders';
 import { Accordion, Alert, Button, Checkbox, FileInput, Group, PasswordInput, Space, Stack, Text, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
@@ -331,17 +332,16 @@ export function UploadPane({ env }: { env: EnvProps }) {
             jobId: newJobId,
             repositoryUrl,
         });
-        const usernameValue = currentValues.username.trim();
-        const passwordValue = currentValues.password;
-        const tokenValue = currentValues.token.trim();
-        if (usernameValue) params.set('username', usernameValue);
-        if (passwordValue) params.set('password', passwordValue);
-        if (tokenValue) params.set('token', tokenValue);
         if (currentValues.skipExisting) params.set('skipExisting', 'true');
 
         try {
             const res = await fetch(`/api/pip/upload?${params.toString()}`, {
                 method: 'POST',
+                headers: buildAuthHeaders({
+                    username: currentValues.username,
+                    password: currentValues.password,
+                    token: currentValues.token,
+                }),
                 body: fd,
             });
             if (!res.ok) {

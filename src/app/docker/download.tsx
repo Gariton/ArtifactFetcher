@@ -1,16 +1,21 @@
 'use client';
-import { Alert, Button, Space, Stack, TextInput } from "@mantine/core";
+import { Accordion, Alert, Button, Checkbox, PasswordInput, Space, Stack, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useDisclosure } from "@mantine/hooks";
 import { useRef, useState, useEffect, useCallback } from "react";
+import { IconCloudCog } from "@tabler/icons-react";
 import { Layer } from "@/lib/progressBus";
 import { ProgressEvent } from "@/lib/progressBus";
 import { DownloadModal } from "@/components/Download/Modal";
 
 type FormType = {
+    registry: string;
     repo: string;
     tag: string;
     platform: string;
+    username: string;
+    password: string;
+    insecureTLS: boolean;
 }
 
 export function DownloadPane() {
@@ -52,9 +57,13 @@ export function DownloadPane() {
     const form = useForm<FormType>({
         mode: "uncontrolled",
         initialValues: {
+            registry: "",
             repo: "",
             tag: "",
-            platform: "linux/amd64"
+            platform: "linux/amd64",
+            username: "",
+            password: "",
+            insecureTLS: false
         },
         validate: {
             repo: (v) => v=="" ? "リポジトリを指定してください" : null,
@@ -154,9 +163,59 @@ export function DownloadPane() {
                 onSubmit={form.onSubmit(onSubmit)}
             >
                 <Stack>
+                    <Accordion
+                        variant="separated"
+                        radius="lg"
+                    >
+                        <Accordion.Item value="registry_settings" key="registry_settings">
+                            <Accordion.Control icon={<IconCloudCog size="1em"/>}>
+                                レジストリ設定（任意・Docker Hub 以外）
+                            </Accordion.Control>
+                            <Accordion.Panel>
+                                <Stack>
+                                    <TextInput
+                                        label="Registry"
+                                        description="空欄なら Docker Hub。例: ghcr.io, quay.io, registry.example.com:5000"
+                                        size="lg"
+                                        radius="lg"
+                                        placeholder="ghcr.io"
+                                        key={form.key("registry")}
+                                        {...form.getInputProps("registry")}
+                                        disabled={loading}
+                                    />
+                                    <TextInput
+                                        label="Username"
+                                        description="プライベートイメージの場合に入力（任意）"
+                                        size="lg"
+                                        radius="lg"
+                                        placeholder="username"
+                                        key={form.key("username")}
+                                        {...form.getInputProps("username")}
+                                        disabled={loading}
+                                    />
+                                    <PasswordInput
+                                        label="Password / Token"
+                                        size="lg"
+                                        radius="lg"
+                                        placeholder="password または access token"
+                                        key={form.key("password")}
+                                        {...form.getInputProps("password")}
+                                        disabled={loading}
+                                    />
+                                    <Checkbox
+                                        label="TLS証明書の検証をスキップする"
+                                        description="自己署名証明書の社内レジストリ向け"
+                                        key={form.key("insecureTLS")}
+                                        {...form.getInputProps("insecureTLS", { type: "checkbox" })}
+                                        disabled={loading}
+                                    />
+                                </Stack>
+                            </Accordion.Panel>
+                        </Accordion.Item>
+                    </Accordion>
                     <TextInput
                         label="Repository"
-                        description="欲しいDockerイメージ名を入力"
+                        description="欲しいDockerイメージ名を入力（Registry欄を空にして ghcr.io/owner/name 形式でも可）"
                         size="lg"
                         radius="lg"
                         placeholder="library/redis"

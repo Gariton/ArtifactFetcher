@@ -155,6 +155,9 @@ async function buildManifestAndLayout(files: string[], packagesDir: string, outp
         const repoId = nevra ? await queryRepoId(nevra, repoIds, repoqueryCmd) : undefined;
         const repo = repoId ? repoMap.get(repoId) : undefined;
 
+        // `rpm -qp` で正確な NEVRA を取得するのが基本。失敗した場合のみ、
+        // 以下のファイル名分割によるベストエフォートの推定にフォールバックする
+        // （末尾2つの "-" を version-release の境界とみなす簡易ヒューリスティック）。
         const raw = file.replace(/\.rpm$/i, '');
         const lastDash = raw.lastIndexOf('-');
         const secondLastDash = lastDash > 0 ? raw.lastIndexOf('-', lastDash - 1) : -1;

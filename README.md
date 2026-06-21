@@ -101,6 +101,19 @@ docker buildx build \
 | `S3_BUCKET` |  | npm などで生成したアーカイブを保存するバケット名 |
 | `S3_REGION` | `us-east-1` | S3 クライアントに渡すリージョン（MinIO でも必須） |
 | `S3_FORCE_PATH_STYLE` | `true` | パススタイルアクセスを強制するか（MinIO は `true` 推奨） |
+| `APP_AUTH_USER` |  | 設定すると全ルートに Basic 認証を要求（`APP_AUTH_PASSWORD` と併用）。公開設置時は必須を推奨 |
+| `APP_AUTH_PASSWORD` |  | Basic 認証のパスワード |
+| `JOB_TTL_MS` | `1800000` | 完了/失敗したジョブと進捗バスを破棄するまでの保持時間（ミリ秒） |
+| `JOB_SWEEP_INTERVAL_MS` | `300000` | 期限切れジョブを掃除する間隔（ミリ秒） |
+
+> **セキュリティ**: レジストリの認証情報（ユーザー名 / パスワード / トークン）はクエリ文字列ではなく
+> HTTP ヘッダ（`x-registry-username` / `x-registry-password` / `x-registry-token`）で送信され、アクセスログに残りません。
+> このアプリはサーバーから任意の外部レジストリ/URL へ接続できるため、公開ネットワークに置く場合は
+> `APP_AUTH_USER` / `APP_AUTH_PASSWORD` によるアクセス制御を有効化してください。
+
+> **ローカル開発の HTTPS**: `npm run dev` は `--experimental-https` で固定パスの証明書
+> （`/etc/pki/tls/private/auth.key` / `/etc/pki/tls/certs/auth.crt`）を参照します。別環境では
+> 証明書を用意するか、`package.json` の `dev` スクリプトから該当オプションを外して実行してください。
 
 `.env.production` 例：
 ```dotenv
@@ -158,13 +171,19 @@ npm run download -- npm next ^18 --host https://downloader.example.com --out dow
 ## 機能詳細
 
 ### Docker イメージのダウンロード（tar）
-- Docker Hub の **token 取得 → manifest 解決（platform 対応）→ 各 layer/config を検証付きでダウンロード**  
-- `manifest.json` を `docker load` 形式に整形し、`.tar` を生成  
+- **任意の Docker Registry v2 互換レジストリ**に対応（Docker Hub / ghcr.io / quay.io / 社内レジストリ等）  
+  - `WWW-Authenticate` チャレンジを解析し、**Bearer トークン取得**または **Basic 認証**を自動でネゴシエート  
+  - `registry` 省略時は Docker Hub。公式イメージ（スラッシュ無し）は `library/` を自動補完  
+  - `registry` 空欄でも `ghcr.io/owner/name` のように **repository へホストを埋め込む**書式を解釈  
+  - プライベートイメージ向けに **username / password（またはトークン）** を指定可、自己署名証明書向けに **TLS 検証スキップ** に対応  
+- manifest 解決（platform 対応）→ 各 layer/config を **digest 検証付き**でダウンロード  
+- `manifest.json` を `docker load` 形式に整形し、`.tar` を生成（Docker Hub 以外はホスト名付きで `RepoTags` を付与）  
 - 生成した `.tar` は S3 (MinIO) にアップロードし、クライアントからは S3 経由でストリーミングダウンロード  
 - 進捗は **layer ごと**にバイト数で SSE 送出  
 
 #### API（サーバ内）
-- `POST /api/build/start` … { repo, tag, platform } → { jobId }  
+- `POST /api/docker/start` … { repo, tag, platform, registry?, username?, password?, insecureTLS? } → { jobId }  
+  - 認証情報は **リクエストボディ（JSON）でのみ**受け取り、ログには残さない  
 - `GET  /api/build/progress?jobId=...` … SSE  
 - `GET  /api/build/download?jobId=...` … `.tar` ダウンロード  
 

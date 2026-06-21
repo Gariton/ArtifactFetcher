@@ -12,7 +12,6 @@ export async function GET(req: NextRequest) {
     const jobId = searchParams.get('jobId') || '';
     const job = jobStore.get(jobId);
     logRequest(req, `download job=${jobId}`);
-    console.log(job)
     if (!job) return new Response('Not Found', { status: 404 });
     if (!job.filename) return new Response('Not Ready', { status: 425 });
 

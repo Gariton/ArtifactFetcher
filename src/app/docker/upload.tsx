@@ -12,6 +12,7 @@ import { FileItem } from "@/components/Upload/FileItem";
 import { UploadModal } from "@/components/Upload/Modal";
 import { getEnvironmentVar } from "@/components/actions";
 import { useRetryableEventSource } from "@/lib/useRetryableEventSource";
+import { buildAuthHeaders } from "@/lib/authHeaders";
 
 type FormType = {
     files: File[];
@@ -375,12 +376,11 @@ export function UploadPane() {
             tag: currentValues.tag,
             useManifest: String(currentValues.useManifest),
         });
-        if (currentValues.username) qs.set('username', currentValues.username);
-        if (currentValues.password) qs.set('password', currentValues.password);
 
         try {
             const res = await fetch(`/api/docker/upload-multi?${qs.toString()}`, {
                 method: 'POST',
+                headers: buildAuthHeaders({ username: currentValues.username, password: currentValues.password }),
                 body: fd,
             });
             if (!res.ok) {

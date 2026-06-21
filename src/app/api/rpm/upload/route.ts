@@ -8,6 +8,7 @@ import { jobStore } from '@/lib/jobStore';
 import { ProgressBus, globalBusMap } from '@/lib/progressBus';
 import { uploadRpmFile, type RpmUploadMethod } from '@/lib/rpm/publish';
 import { logRequest } from '@/lib/requestLog';
+import { readUploadAuth } from '@/lib/authHeaders';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,9 +18,7 @@ export async function POST(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const jobId = searchParams.get('jobId');
     const repositoryUrl = searchParams.get('repositoryUrl')?.trim() || searchParams.get('registryUrl')?.trim() || '';
-    const username = searchParams.get('username')?.trim() || undefined;
-    const password = searchParams.get('password') || undefined;
-    const token = searchParams.get('token')?.trim() || searchParams.get('authToken')?.trim() || undefined;
+    const { username, password, token } = readUploadAuth(req.headers);
     const method = ((searchParams.get('method') || 'put').toLowerCase() === 'post' ? 'post' : 'put') as RpmUploadMethod;
     const ignoreTlsVerify = ['1', 'true', 'yes', 'on'].includes((searchParams.get('ignoreTlsVerify') || '').toLowerCase());
 

@@ -4,6 +4,7 @@ import { PackageUploadModal } from '@/components/PackageUpload/Modal';
 import { FileItem } from '@/components/Upload/FileItem';
 import { ProgressEvent } from '@/lib/progressBus';
 import { useRetryableEventSource } from '@/lib/useRetryableEventSource';
+import { buildAuthHeaders } from '@/lib/authHeaders';
 import { Accordion, Alert, Button, Checkbox, Group, PasswordInput, Radio, Space, Stack, Text, TextInput } from '@mantine/core';
 import { Dropzone } from '@mantine/dropzone';
 import { useForm } from '@mantine/form';
@@ -152,13 +153,14 @@ export function UploadPane({ env }: { env: EnvProps }) {
         for (const file of files) fd.append('files', file, file.name);
 
         const params = new URLSearchParams({ jobId: newJobId, repositoryUrl: current.repositoryUrl.trim(), method: current.method });
-        if (current.username.trim()) params.set('username', current.username.trim());
-        if (current.password) params.set('password', current.password);
-        if (current.token.trim()) params.set('token', current.token.trim());
         if (current.ignoreTlsVerify) params.set('ignoreTlsVerify', 'true');
 
         try {
-            const res = await fetch(`/api/rpm/upload?${params.toString()}`, { method: 'POST', body: fd });
+            const res = await fetch(`/api/rpm/upload?${params.toString()}`, {
+                method: 'POST',
+                headers: buildAuthHeaders({ username: current.username, password: current.password, token: current.token }),
+                body: fd,
+            });
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
                 throw new Error(data?.error || 'upload failed');

@@ -12,6 +12,7 @@ import { FileItem } from '@/components/Upload/FileItem';
 import { PackageUploadModal } from '@/components/PackageUpload/Modal';
 import { getEnvironmentVar } from '@/components/actions';
 import { useRetryableEventSource } from '@/lib/useRetryableEventSource';
+import { buildAuthHeaders } from '@/lib/authHeaders';
 
 const FLUSH_INTERVAL = 250;
 
@@ -298,16 +299,15 @@ export function UploadPane() {
             jobId: newJobId,
             registryUrl,
         });
-        const authTokenValue = currentValues.authToken.trim();
-        if (authTokenValue) params.set('authToken', authTokenValue);
-        const usernameValue = currentValues.username.trim();
-        const passwordValue = currentValues.password;
-        if (usernameValue) params.set('username', usernameValue);
-        if (passwordValue) params.set('password', passwordValue);
 
         try {
             const res = await fetch(`/api/npm/upload?${params.toString()}`, {
                 method: 'POST',
+                headers: buildAuthHeaders({
+                    username: currentValues.username,
+                    password: currentValues.password,
+                    token: currentValues.authToken,
+                }),
                 body: fd,
             });
             if (!res.ok) {

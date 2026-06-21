@@ -102,7 +102,6 @@ export async function buildDockerImageTar({
         throw new Error('Unexpected manifest structure (missing config or layers).');
     }
     bus.emitEvent({ type: 'manifest-resolved', items: manifest.layers });
-    console.log(`manifestの解決完了: ${manifest.layers.length}レイヤー`)
 
     const safeRepo = repository.replace(/[\/]/g, '_');
     const workRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'imgdl-'));
@@ -110,14 +109,12 @@ export async function buildDockerImageTar({
     await fs.promises.mkdir(imageDir, { recursive: true });
 
     bus.emitEvent({ type: 'stage', stage: 'download-config' });
-    console.log(`configをダウンロードします`);
     const configDigest = manifest.config.digest.split(':')[1];
     const configPath = path.join(imageDir, `${configDigest}.json`);
     await downloadBlob(repository, manifest.config.digest, token, configPath, bus);
 
     for (let i = 0; i < manifest.layers.length; i++) {
         bus.emitEvent({ type: 'stage', stage: `download-layer-${i}` });
-        console.log(`レイヤーをダウンロード: ${i}`);
         const layer = manifest.layers[i];
         const layerId = layer.digest.split(':')[1];
         const layerDir = path.join(imageDir, layerId);
@@ -135,12 +132,10 @@ export async function buildDockerImageTar({
     await fs.promises.writeFile(path.join(imageDir, 'manifest.json'), JSON.stringify(loadManifest, null, 2));
 
     bus.emitEvent({ type: 'tar-writing' });
-    console.log(`tar書き込み実施`)
     const filename = `${safeRepo}@${tag}.tar`;
     const tarPath = path.join(workRoot, filename);
     await tar.c({ file: tarPath, cwd: imageDir, sync: true }, ['.']);
 
     bus.emitEvent({ type: 'done', filename });
-    console.log("完了");
     return { tarPath, filename, workRoot };
 }

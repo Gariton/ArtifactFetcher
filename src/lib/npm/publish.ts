@@ -30,7 +30,7 @@ function buildNpmRc({ registry, authToken, username, password }: { registry: str
         const encoded = Buffer.from(`${username}:${password}`, 'utf8').toString('base64');
         lines.push(`//${hostAndPath}/:_auth=${encoded}`);
     }
-    console.log(lines);
+    // 認証情報を含むため .npmrc の内容はログに出力しない。
     return lines.join('\n') + '\n';
 }
 

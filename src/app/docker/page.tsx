@@ -59,12 +59,14 @@ export default function Docker() {
                 </Tabs.List>
                 <Tabs.Panel
                     value="download"
+                    py="lg"
                 >
                     <DownloadPane />
                 </Tabs.Panel>
                 {/^(1|true|on|yes)$/i.test(env.DOCKER_UPLOAD || '') && (
                     <Tabs.Panel
                         value="upload"
+                        py="lg"
                     >
                         <UploadPane />
                     </Tabs.Panel>

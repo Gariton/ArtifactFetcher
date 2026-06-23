@@ -60,8 +60,8 @@ export default function RpmPage() {
                     <Tabs.Tab value="upload" leftSection={<IconUpload size="1em" />} disabled={!uploadEnabled}>アップロード</Tabs.Tab>
                 </Tabs.List>
 
-                <Tabs.Panel value="download"><DownloadPane /></Tabs.Panel>
-                {uploadEnabled && <Tabs.Panel value="upload"><UploadPane env={env} /></Tabs.Panel>}
+                <Tabs.Panel value="download" py="lg"><DownloadPane /></Tabs.Panel>
+                {uploadEnabled && <Tabs.Panel value="upload" py="lg"><UploadPane env={env} /></Tabs.Panel>}
             </Tabs>
             <Space h="xl" />
         </div>

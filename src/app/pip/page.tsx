@@ -65,11 +65,11 @@ export default function PipPage() {
                     </Tabs.Tab>
                 </Tabs.List>
 
-                <Tabs.Panel value="download">
+                <Tabs.Panel value="download" py="lg">
                     <DownloadPane />
                 </Tabs.Panel>
                 {uploadEnabled && (
-                    <Tabs.Panel value="upload">
+                    <Tabs.Panel value="upload" py="lg">
                         <UploadPane env={env} />
                     </Tabs.Panel>
                 )}

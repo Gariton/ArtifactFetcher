@@ -62,11 +62,11 @@ export default function NpmPage() {
                     </Tabs.Tab>
                 </Tabs.List>
 
-                <Tabs.Panel value="download">
+                <Tabs.Panel value="download" py="lg">
                     <DownloadPane />
                 </Tabs.Panel>
                 {/^(1|true|on|yes)$/i.test(env.NPM_UPLOAD || '') && (
-                    <Tabs.Panel value="upload">
+                    <Tabs.Panel value="upload" py="lg">
                         <UploadPane />
                     </Tabs.Panel>
                 )}

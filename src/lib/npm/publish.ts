@@ -39,20 +39,42 @@ type PackageManifest = {
     version: string;
 };
 
+// npm 標準の tarball はルートが `package/` だが、ミラーや別レジストリが再パックした
+// tarball ではルートディレクトリ名が異なったり `./` 接頭辞が付くことがある。
+// そのため固定パス一致ではなく、最も浅い階層にある package.json を採用する。
+function manifestDepth(normalizedPath: string): number | null {
+    const segments = normalizedPath.split('/');
+    // `<root>/package.json` の形（深さ2）だけをパッケージ manifest とみなす。
+    if (segments.length === 2 && segments[1] === 'package.json') {
+        return segments.length;
+    }
+    return null;
+}
+
 async function readTarballManifest(tarballPath: string): Promise<PackageManifest> {
-    let manifestRaw = '';
+    const candidates = new Map<string, Buffer[]>();
     await tar.t({
         file: tarballPath,
         onentry(entry) {
-            if (entry.path === 'package/package.json') {
-                entry.on('data', (chunk) => {
-                    manifestRaw += chunk.toString('utf8');
+            const normalized = entry.path.replace(/^\.\//, '').replace(/\/+/g, '/');
+            if (entry.type === 'File' && manifestDepth(normalized) !== null) {
+                const chunks: Buffer[] = [];
+                candidates.set(normalized, chunks);
+                // マルチバイト文字がチャンク境界で分割されても壊れないよう Buffer のまま蓄積する。
+                entry.on('data', (chunk: Buffer | string) => {
+                    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
                 });
             } else {
                 entry.resume();
             }
         },
     });
+    // 複数候補がある場合は `package/package.json` を優先し、なければ任意の1件を使う。
+    const chosenKey = candidates.has('package/package.json')
+        ? 'package/package.json'
+        : candidates.keys().next().value;
+    const chunks = chosenKey ? candidates.get(chosenKey) : undefined;
+    const manifestRaw = chunks && chunks.length ? Buffer.concat(chunks).toString('utf8') : '';
     if (!manifestRaw) {
         throw new Error('package.json not found in tarball');
     }

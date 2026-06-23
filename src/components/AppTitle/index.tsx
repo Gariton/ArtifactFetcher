@@ -1,30 +1,22 @@
-import { Group, Anchor, Title } from "@mantine/core";
-import Image from "next/image";
+import { Group, Text } from "@mantine/core";
+import Link from "next/link";
+import { AccentTile } from "../AccentTile";
 import classes from "./styles.module.css";
 
 export const AppTitle = () => {
     return (
-        <Group
-            gap={0}
-        >
-            <Image
-                alt="icon"
-                width={50}
-                height={50}
-                src="/icon.png"
-            />
-            <Anchor
-                variant="text"
-                td="none"
-                href="/"
-                className={classes.title}
-            >
-                <Title
-                    order={3}
+        <Link href="/" className={classes.title}>
+            <Group gap="xs" wrap="nowrap">
+                <AccentTile color="docker" code="AF" size="md" />
+                <Text
+                    fw={600}
+                    fz={15}
+                    style={{ letterSpacing: "-0.01em" }}
+                    visibleFrom="xs"
                 >
                     Artifact Fetcher
-                </Title>
-            </Anchor>
-        </Group>
+                </Text>
+            </Group>
+        </Link>
     );
 }

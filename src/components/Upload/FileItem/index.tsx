@@ -18,7 +18,9 @@ export const FileItem = memo(function FileItemMemo ({
 }) {
     const showCheck = status === 'done' || status === 'published';
     const showProgress = ['processing', 'uploading', 'publishing'].includes(status);
+    const isError = status === 'error';
     const showIdle = !status || ['waiting'].includes(status);
+    const ringColor = isError ? 'npm' : 'success';
 
     return (
         <Card
@@ -31,12 +33,19 @@ export const FileItem = memo(function FileItemMemo ({
                 <RingProgress
                     sections={[
                         {
-                            value: percent,
-                            color: "green"
+                            value: isError ? 100 : percent,
+                            color: ringColor
                         }
                     ]}
                     label={
                         <Center>
+                            {isError && (
+                                <IconX
+                                    size="1.3em"
+                                    stroke={3}
+                                    color="var(--af-error)"
+                                />
+                            )}
                             {showCheck && (
                                 <IconCheck
                                     size="1.3em"
@@ -63,8 +72,8 @@ export const FileItem = memo(function FileItemMemo ({
                 <div
                     style={{flex: 1}}
                 >
-                    <Text size="sm">{file.name}</Text>
-                    <Text size="xs" c="dimmed">{(file.size / 1_000_000).toFixed(2)}MB</Text>
+                    <Text size="sm" ff="monospace" style={{ wordBreak: "break-all" }}>{file.name}</Text>
+                    <Text size="xs" c="dimmed" ff="monospace">{(file.size / 1_000_000).toFixed(2)}MB</Text>
                 </div>
                 <ActionIcon
                     variant="transparent"

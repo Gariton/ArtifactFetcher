@@ -1,0 +1,68 @@
+.card {
+    display: flex;
+    flex-direction: column;
+    min-height: 196px;
+    padding: 22px;
+    border-radius: var(--mantine-radius-lg);
+    border: 1px solid color-mix(in oklch, var(--accent) 30%, transparent);
+    background: linear-gradient(
+        180deg,
+        color-mix(in oklch, var(--accent) 6%, transparent),
+        color-mix(in oklch, var(--accent) 1.5%, transparent)
+    );
+    text-decoration: none;
+    color: var(--af-text);
+    transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+}
+
+.card:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(in oklch, var(--accent) 50%, transparent);
+    box-shadow: 0 14px 36px color-mix(in oklch, var(--accent) 18%, transparent);
+}
+
+.chevron {
+    opacity: 0.65;
+    transition: transform 140ms ease, opacity 140ms ease;
+}
+
+.card:hover .chevron {
+    opacity: 1;
+    transform: translateX(3px);
+}
+
+.tag {
+    font-size: 10px;
+    border-radius: 6px;
+    padding: 4px 9px;
+    line-height: 1;
+}
+
+.adminCard {
+    display: flex;
+    align-items: center;
+    min-height: 196px;
+    padding: 22px;
+    border-radius: var(--mantine-radius-lg);
+    border: 1px dashed var(--af-border-strong);
+    background: var(--af-surface);
+    text-decoration: none;
+    transition: border-color 140ms ease, background 140ms ease;
+}
+
+.adminCard:hover {
+    border-color: var(--af-muted);
+    background: var(--af-raised);
+}
+
+.adminIcon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--af-muted);
+    background: var(--af-raised);
+    flex: none;
+}

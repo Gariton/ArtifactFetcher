@@ -1,11 +1,12 @@
 'use client';
 
-import { Group, Space, Tabs, Text, ThemeIcon, Title } from '@mantine/core';
-import { IconBrandNpm, IconDownload, IconUpload } from '@tabler/icons-react';
+import { Space, Tabs } from '@mantine/core';
+import { IconDownload, IconUpload } from '@tabler/icons-react';
 import { DownloadPane } from './download';
 import { UploadPane } from './upload';
 import { useEffect, useState } from 'react';
 import { getEnvironmentVar } from '@/components/actions';
+import { PageHeader } from '@/components/PageHeader';
 
 export default function NpmPage() {
 
@@ -31,34 +32,17 @@ export default function NpmPage() {
 
     return (
         <div>
-            <Group
-                justify="space-between"
-            >
-                <Title>
-                    npm package
-                </Title>
-                <ThemeIcon
-                    variant="transparent"
-                    size={60}
-                >
-                    <IconBrandNpm
-                        color="red"
-                        style={{width: '70%', height: '70%'}}
-                        stroke={1.3}
-                    />
-                </ThemeIcon>
-            </Group>
-            <Text
-                c="dimmed"
-            >
-                NPM公式リポジトリから指定したパッケージとそれに依存するパッケージをダウンロードし固めたものをダウンロードします
-            </Text>
+            <PageHeader
+                manager="npm"
+                description="lockfile / name@semver から依存を全解決し、全 tarball を取得。社内レジストリへ publish も対応。"
+            />
 
-            <Space h="xl" />
-            
+            <Space h="md" />
+
             <Tabs
                 variant="pills"
-                radius="lg"
+                color="npm"
+                radius="xl"
                 defaultValue="download"
             >
                 <Tabs.List>

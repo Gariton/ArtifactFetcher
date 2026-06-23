@@ -1,82 +1,77 @@
 'use client';
 
-import { ActionIcon, Button, Modal, SimpleGrid, Stack, Text, Tooltip } from '@mantine/core';
-import { TablerIcon } from '@tabler/icons-react';
-// import * as TablerIconsProps from '@tabler/icons-react';
-import { ReactNode, useState } from 'react';
+import { Box, Group, SimpleGrid, Stack, Text } from '@mantine/core';
+import { IconChevronRight, IconLayoutList } from '@tabler/icons-react';
+import { AccentTile } from '../AccentTile';
+import { MANAGERS, type Manager } from '../managers';
+import classes from './styles.module.css';
 
-export type ManagerEntry = {
-    id: string;
-    name: string;
-    description: string;
-    href: string;
-    Icon: TablerIcon;
-    color?: string;
-};
-
-type ManagerCatalogProps = {
-    entries: ManagerEntry[];
-};
-
-export function ManagerCatalog({ entries }: ManagerCatalogProps) {
-    const [selected, setSelected] = useState<ManagerEntry | null>(null);
-
+function ManagerCard({ m }: { m: Manager }) {
     return (
-        <>
-            <SimpleGrid
-                cols={{ base: 2, sm: 3 }}
-                spacing={{ base: 'lg', sm: 'xl' }}
-                verticalSpacing={{ base: 'lg', sm: 'xl' }}
-            >
-                {entries.map((entry) => (
-                    <div
-                        key={entry.id}
-                        style={{ display: 'flex', justifyContent: 'center' }}
+        <Box
+            component="a"
+            href={m.href}
+            className={classes.card}
+            style={{
+                ['--accent' as string]: `var(--af-${m.color})`,
+            }}
+        >
+            <Group justify="space-between" align="flex-start">
+                <AccentTile color={m.color} code={m.code} size="lg" />
+                <span className={classes.chevron} style={{ color: `var(--af-${m.color})` }}>
+                    <IconChevronRight size={20} stroke={1.7} />
+                </span>
+            </Group>
+            <Stack gap={7} mt="md">
+                <Text fz={18} fw={600} style={{ letterSpacing: '-0.01em' }}>
+                    {m.label}
+                </Text>
+                <Text fz={13.5} c="var(--af-muted)" lh={1.6}>
+                    {m.blurb}
+                </Text>
+            </Stack>
+            <Group gap={7} mt="auto" pt="md">
+                {m.tags.map((t) => (
+                    <span
+                        key={t}
+                        className={`${classes.tag} af-mono`}
+                        style={{
+                            color: `var(--af-${m.color})`,
+                            background: `color-mix(in oklch, var(--af-${m.color}) 12%, transparent)`,
+                        }}
                     >
-                        <Tooltip
-                            label={entry.name}
-                            position="top"
-                            withArrow
-                        >
-                            <ActionIcon
-                                size={110}
-                                radius="xl"
-                                variant="light"
-                                color={entry.color ?? 'gray'}
-                                onClick={() => setSelected(entry)}
-                                aria-label={`${entry.name} の詳細を表示`}
-                                style={{ width: 110, height: 110 }}
-                            >
-                                <entry.Icon size={48} stroke={1.3} />
-                            </ActionIcon>
-                        </Tooltip>
-                    </div>
+                        {t}
+                    </span>
                 ))}
-            </SimpleGrid>
+            </Group>
+        </Box>
+    );
+}
 
-            <Modal
-                opened={selected !== null}
-                onClose={() => setSelected(null)}
-                title={selected?.name}
-                centered
-                radius="lg"
+export function ManagerCatalog() {
+    return (
+        <Stack gap="md">
+            <Text className="af-eyebrow">5 つの成果物マネージャ</Text>
+            <SimpleGrid
+                cols={{ base: 1, xs: 2, md: 3 }}
+                spacing="lg"
             >
-                {selected && (
-                    <Stack gap="md">
-                        <Text size="sm" c="dimmed">
-                            {selected.description}
-                        </Text>
-                        <Button
-                            component="a"
-                            href={selected.href}
-                            radius="lg"
-                            color={selected.color ?? 'dark'}
-                        >
-                            {selected.name}ページへ移動
-                        </Button>
-                    </Stack>
-                )}
-            </Modal>
-        </>
+                {MANAGERS.map((m) => (
+                    <ManagerCard key={m.id} m={m} />
+                ))}
+
+                <Box component="a" href="/admin" className={classes.adminCard}>
+                    <Group gap="md" align="center" h="100%">
+                        <span className={classes.adminIcon}>
+                            <IconLayoutList size={22} stroke={1.6} />
+                        </span>
+                        <div>
+                            <Text fz={14} fw={600} c="var(--af-text)">管理 / ログ</Text>
+                            <Text fz={12} c="var(--af-dim)" mt={3}>リクエスト履歴の確認</Text>
+                        </div>
+                    </Group>
+                </Box>
+            </SimpleGrid>
+        </Stack>
     );
 }

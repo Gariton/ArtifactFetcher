@@ -1,13 +1,13 @@
 'use client';
 
 import { ProgressEvent, type RpmPackage } from '@/lib/progressBus';
-import { Alert, Button, Checkbox, ScrollArea, Stack, Text, Textarea, TextInput } from '@mantine/core';
+import { Button, ScrollArea, Stack, Text } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { IconAlertTriangle, IconArrowRight, IconDownload } from '@tabler/icons-react';
+import { IconAlertCircle, IconBox, IconDownload } from '@tabler/icons-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FormCard } from '@/components/FormCard';
 import { ProgressBanner, ProgressModal, type ProgressItem } from '@/components/ProgressModal';
+import { CarbonForm, CarbonSection, CarbonField, CarbonTextarea, CarbonCheckbox, CarbonFooter, CarbonSubmit, carbonClasses } from '@/components/CarbonForm';
 
 const repoOptions = [
     { value: 'centos-stream-9-baseos', label: 'CentOS Stream 9 BaseOS (official)' },
@@ -66,6 +66,7 @@ export function DownloadPane() {
     const esRef = useRef<EventSource | null>(null);
 
     const form = useForm({
+        mode: 'controlled',
         initialValues: {
             packages: '',
             bundleName: 'rpm-offline',
@@ -198,34 +199,79 @@ export function DownloadPane() {
     });
     const doneCount = items.filter((i) => i.status === 'done').length;
 
+    const fv = form.getValues();
+    const toggleRepo = (value: string) => {
+        const cur = fv.repositories;
+        form.setFieldValue('repositories', cur.includes(value) ? cur.filter((r) => r !== value) : [...cur, value]);
+    };
     return (
         <div>
-            <Alert variant="light" color="warning" icon={<IconAlertTriangle size="1.1em" />} radius="md" mb="lg">依存関係解決を有効にすると、対象パッケージが多くなるため時間がかかる場合があります。</Alert>
-            <form onSubmit={form.onSubmit(onSubmit)}>
-                <FormCard
-                    hint={<Text className="af-mono" fz={12} c="var(--af-dim)">依存込みで収集して tar 化します</Text>}
-                    actions={<Button size="md" radius="md" color="rpm" type="submit" loading={loading} rightSection={<IconArrowRight size="1.05rem" />}>取得を開始</Button>}
-                >
-                <Stack>
-                    <Textarea label="Package" description="rpm名をスペースまたは改行区切りで入力" minRows={4} autosize size="lg" radius="lg" placeholder="bash\ncoreutils" key={form.key('packages')} {...form.getInputProps('packages')} disabled={loading} />
-                    <TextInput label="Bundle name" size="lg" radius="lg" key={form.key('bundleName')} {...form.getInputProps('bundleName')} disabled={loading} />
-                    <Checkbox.Group label="Repositories" key={form.key('repositories')} {...form.getInputProps('repositories')}>
-                        <Stack mt="xs">{repoOptions.map((repo) => <Checkbox key={repo.value} value={repo.value} label={repo.label} />)}</Stack>
-                    </Checkbox.Group>
-                    <Textarea
-                        label="Custom repositories"
-                        description="1行1件。URLのみ、または `id|label|url` 形式で入力"
-                        placeholder={'https://download.example.com/rhel/8/BaseOS/x86_64/os/\ncustom-rhel8-appstream|RHEL 8 AppStream|https://download.example.com/rhel/8/AppStream/x86_64/os/'}
-                        minRows={3}
-                        key={form.key('customRepositories')}
-                        {...form.getInputProps('customRepositories')}
+            <CarbonForm accent="rpm" onSubmit={form.onSubmit(onSubmit)}>
+                <CarbonSection label="取得対象">
+                    <CarbonTextarea
+                        label={<>Package <span className={carbonClasses.required}>必須</span></>}
+                        value={fv.packages}
+                        onChange={(val) => form.setFieldValue('packages', val)}
+                        placeholder={'bash\ncoreutils'}
+                        rows={4}
+                        disabled={loading}
+                        desc="rpm 名をスペースまたは改行区切りで入力"
+                        error={form.errors.packages as string | undefined}
+                    />
+                    <CarbonField
+                        label="Bundle name"
+                        optional
+                        icon={IconBox}
+                        value={fv.bundleName}
+                        onChange={(val) => form.setFieldValue('bundleName', val)}
+                        placeholder="rpm-offline"
                         disabled={loading}
                     />
-                    <Checkbox label="依存関係もダウンロード (--resolve --alldeps)" key={form.key('resolveDependencies')} {...form.getInputProps('resolveDependencies', { type: 'checkbox' })} />
-                </Stack>
-                </FormCard>
-            </form>
-            {error && <Alert color="npm" radius="md" title="エラー" my="lg" variant="light">{error}</Alert>}
+                    <CarbonCheckbox
+                        checked={fv.resolveDependencies}
+                        onChange={(c) => form.setFieldValue('resolveDependencies', c)}
+                        label="依存関係もダウンロード (--resolve --alldeps)"
+                        disabled={loading}
+                    />
+                </CarbonSection>
+
+                <div style={{ borderTop: '1px solid var(--af-border)' }}>
+                    <CarbonSection label="リポジトリ">
+                        <Stack gap={10}>
+                            {repoOptions.map((repo) => (
+                                <CarbonCheckbox
+                                    key={repo.value}
+                                    checked={fv.repositories.includes(repo.value)}
+                                    onChange={() => toggleRepo(repo.value)}
+                                    label={repo.label}
+                                    disabled={loading}
+                                />
+                            ))}
+                        </Stack>
+                        <CarbonTextarea
+                            label="Custom repositories"
+                            optional
+                            small
+                            value={fv.customRepositories}
+                            onChange={(val) => form.setFieldValue('customRepositories', val)}
+                            placeholder={'https://download.example.com/rhel/8/BaseOS/x86_64/os/\ncustom-rhel8-appstream|RHEL 8 AppStream|https://download.example.com/rhel/8/AppStream/x86_64/os/'}
+                            rows={3}
+                            disabled={loading}
+                            desc="1行1件。URL のみ、または id|label|url 形式で入力"
+                            error={form.errors.customRepositories as string | undefined}
+                        />
+                    </CarbonSection>
+                </div>
+
+                <CarbonFooter hint="依存込みで収集して tar 化します">
+                    <CarbonSubmit loading={loading}>取得を開始</CarbonSubmit>
+                </CarbonFooter>
+            </CarbonForm>
+            {error && (
+                <div className={carbonClasses.errorText} style={{ marginTop: 16 }}>
+                    <IconAlertCircle size={14} stroke={2} />{error}
+                </div>
+            )}
 
             <ProgressModal
                 opened={opened}

@@ -1,13 +1,13 @@
 'use client';
 
 import { ProgressEvent, type PipPackage } from '@/lib/progressBus';
-import { Alert, Button, Group, Stack, Text, Textarea, TextInput } from '@mantine/core';
+import { Button, Text } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { IconAlertTriangle, IconArrowRight, IconDownload } from '@tabler/icons-react';
+import { IconAlertCircle, IconBox, IconDownload, IconWorld } from '@tabler/icons-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FormCard } from '@/components/FormCard';
 import { ProgressBanner, ProgressModal, type ProgressItem } from '@/components/ProgressModal';
+import { CarbonForm, CarbonSection, CarbonField, CarbonTextarea, CarbonAuthPanel, CarbonFooter, CarbonSubmit, CarbonGhostButton, carbonClasses } from '@/components/CarbonForm';
 
 type Status = 'idle' | 'starting' | 'running' | 'done' | 'error';
 
@@ -116,6 +116,7 @@ export function DownloadPane() {
     const esRef = useRef<EventSource | null>(null);
 
     const form = useForm<FormValues>({
+        mode: 'controlled',
         initialValues: {
             packages: '',
             requirementsText: '',
@@ -312,107 +313,92 @@ export function DownloadPane() {
 
     return (
         <div>
-            <Alert variant="light" color="warning" icon={<IconAlertTriangle size="1.1em" />} radius="md" mb="lg">
-                依存パッケージが多い場合は、ダウンロードに時間がかかることがあります。ブラウザを閉じると処理が中断されます。
-            </Alert>
-
-            <form onSubmit={form.onSubmit(onSubmit)}>
-                <FormCard
-                    hint={<Text className="af-mono" fz={12} c="var(--af-dim)">依存込みで取得して tar 化します</Text>}
-                    actions={
-                        <Button type="submit" size="md" radius="md" color="pip" loading={loading} rightSection={<IconArrowRight size="1.05rem" />}>
-                            取得を開始
-                        </Button>
-                    }
+            <CarbonForm accent="pip" onSubmit={form.onSubmit(onSubmit)}>
+                <CarbonAuthPanel
+                    icon={IconWorld}
+                    title="インデックス / 設定"
+                    sub={`${form.getValues().indexUrl?.trim() || 'pypi.org/simple'} · ${form.getValues().trustedHosts?.trim() ? 'TLS 検証スキップあり' : 'TLS 検証 ON'}`}
+                    configured={Boolean(form.getValues().indexUrl?.trim())}
+                    defaultOpen={false}
                 >
-                <Stack>
-                    <Textarea
-                        label="パッケージ名"
-                        description="例: requests==2.31.0 fastapi"
-                        size="lg"
-                        radius="lg"
-                        placeholder="requests==2.31.0"
-                        key={form.key('packages')}
-                        {...form.getInputProps('packages')}
-                        minRows={5}
-                        autosize
+                    <CarbonField
+                        label="Index URL"
+                        optional
+                        small
+                        icon={IconWorld}
+                        value={form.getValues().indexUrl}
+                        onChange={(val) => form.setFieldValue('indexUrl', val)}
+                        placeholder="https://pypi.org/simple"
                         disabled={loading}
+                        desc="社内 PyPI などを利用する場合に指定"
                     />
-                    <Textarea
-                        label="requirements.txt (任意)"
-                        description="requirements.txt の内容を貼り付けるとそのまま使用します"
-                        size="lg"
-                        radius="lg"
-                        placeholder="# requirements.txt"
-                        key={form.key('requirementsText')}
-                        {...form.getInputProps('requirementsText')}
-                        minRows={6}
-                        autosize
-                        disabled={loading}
-                    />
-                    <Group grow>
-                        <TextInput
-                            label="バンドル名"
-                            description="出力tarファイル名のベースになります"
-                            size="lg"
-                            radius="lg"
-                            placeholder="pip-offline"
-                            key={form.key('bundleName')}
-                            {...form.getInputProps('bundleName')}
-                            disabled={loading}
-                        />
-                        <TextInput
-                            label="Index URL (任意)"
-                            description="社内PyPIなどを利用する場合に指定"
-                            size="lg"
-                            radius="lg"
-                            placeholder="https://pypi.org/simple"
-                            key={form.key('indexUrl')}
-                            {...form.getInputProps('indexUrl')}
-                            disabled={loading}
-                        />
-                    </Group>
-
-                    <Textarea
-                        label="Extra Index URLs (任意)"
-                        description="複数指定する場合は改行またはカンマ区切りで入力"
-                        size="lg"
-                        radius="lg"
+                    <CarbonTextarea
+                        label="Extra Index URLs"
+                        optional
+                        small
+                        value={form.getValues().extraIndexUrls}
+                        onChange={(val) => form.setFieldValue('extraIndexUrls', val)}
                         placeholder={`https://internal.example.com/simple\nhttps://another.example.com/simple`}
-                        key={form.key('extraIndexUrls')}
-                        {...form.getInputProps('extraIndexUrls')}
-                        minRows={3}
-                        autosize
+                        rows={3}
                         disabled={loading}
+                        desc="複数指定する場合は改行またはカンマ区切り"
                     />
-
-                    <Textarea
-                        label="Trusted Hosts (任意)"
-                        description="セルフサイン証明書などでTLS検証をスキップする場合に指定"
-                        size="lg"
-                        radius="lg"
-                        placeholder={`nexus.example.com`}
-                        key={form.key('trustedHosts')}
-                        {...form.getInputProps('trustedHosts')}
-                        minRows={2}
-                        autosize
+                    <CarbonTextarea
+                        label="Trusted Hosts"
+                        optional
+                        small
+                        value={form.getValues().trustedHosts}
+                        onChange={(val) => form.setFieldValue('trustedHosts', val)}
+                        placeholder="nexus.example.com"
+                        rows={2}
                         disabled={loading}
+                        desc="自己署名証明書で TLS 検証をスキップする場合に指定"
                     />
+                </CarbonAuthPanel>
 
-                </Stack>
-                </FormCard>
-            </form>
+                <CarbonSection label="取得対象">
+                    <CarbonTextarea
+                        label={<>パッケージ名 <span className={carbonClasses.required}>必須</span></>}
+                        value={form.getValues().packages}
+                        onChange={(val) => form.setFieldValue('packages', val)}
+                        placeholder="requests==2.31.0 fastapi"
+                        rows={5}
+                        disabled={loading}
+                        desc="例: requests==2.31.0 fastapi"
+                        error={form.errors.packages as string | undefined}
+                    />
+                    <CarbonTextarea
+                        label="requirements.txt"
+                        optional
+                        value={form.getValues().requirementsText}
+                        onChange={(val) => form.setFieldValue('requirementsText', val)}
+                        placeholder="# requirements.txt"
+                        rows={6}
+                        disabled={loading}
+                        desc="内容を貼り付けるとそのまま使用します"
+                    />
+                    <CarbonField
+                        label="バンドル名"
+                        optional
+                        icon={IconBox}
+                        value={form.getValues().bundleName}
+                        onChange={(val) => form.setFieldValue('bundleName', val)}
+                        placeholder="pip-offline"
+                        disabled={loading}
+                        desc="出力 tar ファイル名のベースになります"
+                    />
+                </CarbonSection>
 
-            {jobId && !opened && status !== 'idle' && (
-                <Button mt="md" variant="light" color="pip" radius="md" onClick={open}>
-                    進捗を再表示
-                </Button>
-            )}
+                <CarbonFooter hint="依存込みで取得して tar 化します">
+                    {jobId && status !== 'idle' && <CarbonGhostButton onClick={open}>進捗を表示</CarbonGhostButton>}
+                    <CarbonSubmit loading={loading}>取得を開始</CarbonSubmit>
+                </CarbonFooter>
+            </CarbonForm>
 
             {error && (
-                <Alert color="npm" radius="md" title="エラー" my="lg" variant="light">
-                    {error}
-                </Alert>
+                <div className={carbonClasses.errorText} style={{ marginTop: 16 }}>
+                    <IconAlertCircle size={14} stroke={2} />{error}
+                </div>
             )}
 
             <PipDownloadModal

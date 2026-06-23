@@ -1,13 +1,13 @@
 'use client';
 
 import { ProgressEvent } from '@/lib/progressBus';
-import { Alert, Button, Group, PasswordInput, Space, Stack, Text, TextInput, Textarea } from '@mantine/core';
+import { Button, Space, Text } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { IconArrowRight, IconDownload, IconInfoCircle } from '@tabler/icons-react';
+import { IconBrain, IconDownload, IconInfoCircle, IconKey } from '@tabler/icons-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FormCard } from '@/components/FormCard';
 import { ProgressBanner, ProgressModal, type ProgressItem } from '@/components/ProgressModal';
+import { CarbonForm, CarbonSection, CarbonField, CarbonTextarea, CarbonPassword, CarbonAuthPanel, CarbonFooter, CarbonSubmit, CarbonGhostButton } from '@/components/CarbonForm';
 
 type Status = 'idle' | 'starting' | 'running' | 'done' | 'error';
 
@@ -42,6 +42,7 @@ export function DownloadPane() {
     const esRef = useRef<EventSource | null>(null);
 
     const form = useForm<FormValues>({
+        mode: 'controlled',
         initialValues: {
             repoId: 'Qwen/Qwen2.5-0.5B-Instruct-GGUF',
             revision: 'main',
@@ -241,31 +242,60 @@ export function DownloadPane() {
     });
     const doneCount = items.filter((i) => i.status === 'done').length;
 
+    const v = form.getValues();
     return (
         <>
-            <form onSubmit={submit}>
-                <FormCard
-                    hint={<Text className="af-mono" fz={12} c="var(--af-dim)">必要ファイルを選択取得して tar 化します</Text>}
-                    actions={<Button type="submit" loading={loading} size="md" radius="md" color="hf" rightSection={<IconArrowRight size="1.05rem" />}>取得を開始</Button>}
+            <CarbonForm accent="hf" onSubmit={submit}>
+                <CarbonAuthPanel
+                    icon={IconKey}
+                    title="認証設定"
+                    sub={`Hugging Face Token · ${v.token ? '設定済' : 'gated model のみ必要'}`}
+                    configured={Boolean(v.token)}
+                    defaultOpen={false}
                 >
-                <Stack>
-                    <TextInput label="Model Repo ID" placeholder="Qwen/Qwen2.5-0.5B-Instruct-GGUF" required {...form.getInputProps('repoId')} />
-                    <Group grow>
-                        <TextInput label="Revision" placeholder="main" {...form.getInputProps('revision')} />
-                        <TextInput label="Bundle name (optional)" placeholder="qwen2.5-local" {...form.getInputProps('bundleName')} />
-                    </Group>
-                    <Textarea label="Include patterns (1行1パターン)" minRows={4} autosize {...form.getInputProps('includePatterns')} />
-                    <Textarea label="Exclude patterns (1行1パターン)" minRows={2} autosize {...form.getInputProps('excludePatterns')} />
-                    <PasswordInput label="Hugging Face Token (gated modelのみ必要)" placeholder="hf_xxx" {...form.getInputProps('token')} />
+                    <CarbonPassword
+                        label="Hugging Face Token"
+                        optional
+                        icon={IconKey}
+                        value={v.token}
+                        onChange={(val) => form.setFieldValue('token', val)}
+                        placeholder="hf_xxx"
+                        disabled={loading}
+                    />
+                </CarbonAuthPanel>
+
+                <CarbonSection label="取得対象">
+                    <CarbonField
+                        label="Model Repo ID"
+                        required
+                        accent
+                        icon={IconBrain}
+                        value={v.repoId}
+                        onChange={(val) => form.setFieldValue('repoId', val)}
+                        placeholder="Qwen/Qwen2.5-0.5B-Instruct-GGUF"
+                        disabled={loading}
+                        error={form.errors.repoId as string | undefined}
+                    />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                        <CarbonField label="Revision" small value={v.revision} onChange={(val) => form.setFieldValue('revision', val)} placeholder="main" disabled={loading} />
+                        <CarbonField label="Bundle name" optional small value={v.bundleName} onChange={(val) => form.setFieldValue('bundleName', val)} placeholder="qwen2.5-local" disabled={loading} />
+                    </div>
+                    <CarbonTextarea label="Include patterns" small value={v.includePatterns} onChange={(val) => form.setFieldValue('includePatterns', val)} rows={4} disabled={loading} desc="1行1パターン" />
+                    <CarbonTextarea label="Exclude patterns" small value={v.excludePatterns} onChange={(val) => form.setFieldValue('excludePatterns', val)} rows={2} disabled={loading} desc="1行1パターン" />
                     {error && (
-                        <Alert color="npm" radius="md" title="Error">{error}</Alert>
+                        <Text c="var(--af-error)" fz={12}>{error}</Text>
                     )}
-                    <Alert icon={<IconInfoCircle size={16} />} color="hf" variant="light" radius="md" title="Ollama 連携のヒント">
-                        GGUF を含むパターンを指定してダウンロードすると、同梱の README-OLLAMA.md をそのまま手順書として使えます。
-                    </Alert>
-                </Stack>
-                </FormCard>
-            </form>
+                </CarbonSection>
+
+                <CarbonFooter hint="必要ファイルを選択取得して tar 化します">
+                    {jobId && <CarbonGhostButton onClick={open}>進捗を表示</CarbonGhostButton>}
+                    <CarbonSubmit loading={loading}>取得を開始</CarbonSubmit>
+                </CarbonFooter>
+            </CarbonForm>
+
+            <Text fz={12} c="var(--af-dim)" mt="sm" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <IconInfoCircle size={14} /> GGUF を含むパターンを指定すると、同梱の README-OLLAMA.md をそのまま手順書として使えます。
+            </Text>
 
             <ProgressModal
                 opened={opened}

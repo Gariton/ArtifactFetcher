@@ -1,14 +1,14 @@
 'use client';
 
 import { LockEntry } from "@/lib/progressBus";
-import { Alert, Button, Stack, Text, Textarea } from "@mantine/core";
+import { Button, Text } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useDisclosure } from "@mantine/hooks";
-import { IconAlertTriangle, IconArrowRight, IconDownload } from "@tabler/icons-react";
+import { IconAlertCircle, IconDownload } from "@tabler/icons-react";
 import { useCallback, useRef, useState } from "react";
 import { ProgressEvent } from "@/lib/progressBus";
-import { FormCard } from "@/components/FormCard";
 import { ProgressBanner, ProgressModal, type ProgressItem } from "@/components/ProgressModal";
+import { CarbonForm, CarbonSection, CarbonTextarea, CarbonFooter, CarbonSubmit, CarbonGhostButton, carbonClasses } from "@/components/CarbonForm";
 
 export function DownloadPane () {
     const [loading, setLoading] = useState(false);
@@ -20,6 +20,7 @@ export function DownloadPane () {
     const [perPackage, setPerPackage] = useState<Record<number, { received: number; total?: number }>>({});
     const esRef = useRef<EventSource | null>(null);
     const form = useForm({
+        mode: "controlled",
         initialValues: {
             packages: ""
         },
@@ -122,72 +123,30 @@ export function DownloadPane () {
 
     return (
         <div>
-            <Alert
-                variant="light"
-                color="warning"
-                icon={<IconAlertTriangle size="1.1em" />}
-                radius="md"
-                mb="lg"
-            >
-                依存関係が多いパッケージは、ダウンロードに時間がかかる場合があります。
-            </Alert>
+            <CarbonForm accent="npm" onSubmit={form.onSubmit(onSubmit)}>
+                <CarbonSection label="取得対象">
+                    <CarbonTextarea
+                        label={<>パッケージ名 <span className={carbonClasses.required}>必須</span></>}
+                        value={form.getValues().packages}
+                        onChange={(v) => form.setFieldValue("packages", v)}
+                        placeholder="react@^18 axios"
+                        rows={5}
+                        disabled={loading}
+                        desc="ダウンロードしたいパッケージ名をスペースまたは改行で区切って入力"
+                        error={form.errors.packages as string | undefined}
+                    />
+                </CarbonSection>
+                <CarbonFooter hint="依存を全解決して tar 化します">
+                    {jobId && <CarbonGhostButton onClick={open}>進捗を表示</CarbonGhostButton>}
+                    <CarbonSubmit loading={loading}>取得を開始</CarbonSubmit>
+                </CarbonFooter>
+            </CarbonForm>
 
-            <form
-                onSubmit={form.onSubmit(onSubmit)}
-            >
-                <FormCard
-                    hint={<Text className="af-mono" fz={12} c="var(--af-dim)">依存を全解決して tar 化します</Text>}
-                    actions={
-                        <Button
-                            size="md"
-                            radius="md"
-                            color="npm"
-                            type="submit"
-                            loading={loading}
-                            rightSection={<IconArrowRight size="1.05rem" />}
-                        >
-                            取得を開始
-                        </Button>
-                    }
-                >
-                    <Stack>
-                        <Textarea
-                            label="パッケージ名"
-                            description="ダウンロードしたいパッケージ名をスペースまたは改行で区切って入力"
-                            size="lg"
-                            radius="lg"
-                            placeholder="react@^18 axios"
-                            key={form.key("packages")}
-                            {...form.getInputProps("packages")}
-                            disabled={loading}
-                            minRows={5}
-                            autosize
-                        />
-                    </Stack>
-                </FormCard>
-            </form>
-
-            {jobId && !opened && status !== "idle" && (
-                <Button
-                    mt="md"
-                    variant="light"
-                    color="npm"
-                    radius="md"
-                    onClick={open}
-                >
-                    進捗を再表示
-                </Button>
+            {error && (
+                <div className={carbonClasses.errorText} style={{ marginTop: 16 }}>
+                    <IconAlertCircle size={14} stroke={2} />{error}
+                </div>
             )}
-
-            {error && <Alert
-                color="npm"
-                radius="md"
-                title="エラー"
-                my="lg"
-                variant="light"
-            >
-                {error}
-            </Alert>}
 
             <ProgressModal
                 opened={opened}

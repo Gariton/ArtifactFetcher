@@ -1,12 +1,12 @@
 import { ManagerCatalog } from "@/components/ManagerCatalog";
-import { AccentTile } from "@/components/AccentTile";
 import { Center, Stack, Text, Title } from "@mantine/core";
+import Image from "next/image";
 
 export default function Home() {
     return (
         <Stack gap={48} pb="xl">
             <Stack align="center" gap="md" pt="xl" pb="sm">
-                <AccentTile color="docker" code="AF" size="xl" />
+                <Image alt="icon" width={120} height={120} src="/icon.png" />
                 <Title order={1} ta="center" style={{ letterSpacing: "-0.02em" }}>
                     Artifact Fetcher
                 </Title>

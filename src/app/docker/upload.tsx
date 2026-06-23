@@ -1,9 +1,9 @@
 'use client';
-import { Accordion, Alert, Button, Checkbox, Group, PasswordInput, Space, Stack, Text, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useDisclosure, useMap } from "@mantine/hooks";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { IconAlertTriangle, IconCloudCog, IconCloudUpload, IconDownload, IconRefresh, IconX } from "@tabler/icons-react";
+import { IconAlertCircle, IconCloudUpload, IconCube, IconKey, IconRefresh, IconServer, IconX } from "@tabler/icons-react";
+import { CarbonForm, CarbonSection, CarbonField, CarbonPassword, CarbonCheckbox, CarbonAuthPanel, CarbonFooter, CarbonSubmit, CarbonGhostButton, CarbonList, carbonClasses, carbonDropzoneClasses } from "@/components/CarbonForm";
 import { Layer } from "@/lib/progressBus";
 import { ProgressEvent } from "@/lib/progressBus";
 import { Dropzone } from "@mantine/dropzone";
@@ -286,7 +286,7 @@ export function UploadPane() {
         indexMapRef.current = new Map();
     };
     const form = useForm<FormType>({
-        mode: "uncontrolled",
+        mode: "controlled",
         initialValues: {
             files: [],
             useManifest: true,
@@ -436,203 +436,107 @@ export function UploadPane() {
 
     const failedCount = Object.values(perFileSnap).filter((state) => state?.status === 'error').length;
 
+    const dockerFiles = form.getValues().files;
+    const dockerCompleted = Object.values(perFileSnap).filter((s) => s?.status === "done" || s?.status === "published").length;
+    const useManifest = form.getValues().useManifest || dockerFiles.length > 1;
+
     return (
         <div>
-            <Alert
-                variant="light"
-                color="warning"
-                icon={<IconAlertTriangle size="1.1em" />}
-                radius="md"
-                mb="lg"
-            >
-                大きなイメージの場合、アップロードに時間がかかる場合があります。
-            </Alert>
+            <CarbonForm accent="docker" onSubmit={onSubmit}>
+                <CarbonAuthPanel
+                    icon={IconServer}
+                    title="アップロード先"
+                    sub={`${form.getValues().registry?.trim() || 'レジストリ未設定'} · ${form.getValues().username ? '認証あり' : '認証なし'}`}
+                    configured={Boolean(form.getValues().registry?.trim())}
+                    defaultOpen
+                >
+                    <CarbonField label="Registry" icon={IconServer} value={form.getValues().registry} onChange={(v) => form.setFieldValue('registry', v)} placeholder="https://docker-hub-clone.example.com" disabled={loading} />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                        <CarbonField label="Username" optional small value={form.getValues().username} onChange={(v) => form.setFieldValue('username', v)} placeholder="username" disabled={loading} />
+                        <CarbonPassword label="Password" optional icon={IconKey} value={form.getValues().password} onChange={(v) => form.setFieldValue('password', v)} placeholder="password" disabled={loading} />
+                    </div>
+                </CarbonAuthPanel>
 
-            <form
-                onSubmit={onSubmit}
-            >
-                <Stack>
-                    <Accordion
-                        variant="separated"
-                        radius="lg"
-                    >
-                        <Accordion.Item
-                            value="upload_settings"
-                            key="upload_settings"
-                        >
-                            <Accordion.Control
-                                icon={<IconCloudCog size="1em"/>}
-                            >
-                                アップロード先設定
-                            </Accordion.Control>
-                            <Accordion.Panel>
-                                <Stack>
-                                    <TextInput
-                                        label="Registry"
-                                        description="アップロード先のレジストリを入力"
-                                        size="lg"
-                                        radius="lg"
-                                        placeholder="https://docker-hub-clone.example.com"
-                                        key={form.key("registry")}
-                                        {...form.getInputProps("registry")}
-                                        disabled={loading}
-                                    />
-                                    <TextInput
-                                        label="Username"
-                                        size="lg"
-                                        radius="lg"
-                                        placeholder="username"
-                                        key={form.key("username")}
-                                        {...form.getInputProps("username")}
-                                        disabled={loading}
-                                    />
-                                    <PasswordInput
-                                        label="Password"
-                                        size="lg"
-                                        radius="lg"
-                                        placeholder="password"
-                                        key={form.key("password")}
-                                        {...form.getInputProps("password")}
-                                        disabled={loading}
-                                    />
-                                </Stack>
-                            </Accordion.Panel>
-                        </Accordion.Item>
-                    </Accordion>
+                <CarbonSection>
                     <Dropzone
-                        onDrop={(files) => {
+                        onDrop={(dropped) => {
                             if (loading) return;
-                            form.setFieldValue('files', files);
+                            form.setFieldValue('files', dropped);
                             perFileRef.current = Object.fromEntries(
-                                files.map((file, idx) => [idx, { received: 0, total: file.size, status: 'waiting' }])
+                                dropped.map((file, idx) => [idx, { received: 0, total: file.size, status: 'waiting' }])
                             ) as Record<number, { received: number; total?: number; status: string }>;
                             setPerFileSnap({ ...perFileRef.current });
                         }}
-                        radius="lg"
                         accept={["application/x-tar"]}
                         p="xl"
+                        className={carbonDropzoneClasses.root}
                     >
-                        <div
-                            style={{pointerEvents: "none"}}
-                        >
-                            <Group justify="center">
-                                <Dropzone.Accept>
-                                    <IconDownload size={50} color={"blue.6"} stroke={1.5} />
-                                </Dropzone.Accept>
-                                <Dropzone.Reject>
-                                    <IconX size={50} color={"red.6"} stroke={1.5} />
-                                </Dropzone.Reject>
-                                <Dropzone.Idle>
-                                    <IconCloudUpload size={50} stroke={1.5}/>
-                                </Dropzone.Idle>
-                            </Group>
-
-                            <Text ta="center" fw={700} fz="lg" mt="xl">
-                                <Dropzone.Accept>ここにファイルをドロップ</Dropzone.Accept>
-                                <Dropzone.Idle>Dockerイメージをアップロード</Dropzone.Idle>
-                            </Text>
-
-                            <Text ta="center" c="dimmed">
-                                .tar形式で固められたDockerイメージをドロップすることでアップロードします
-                            </Text>
+                        <div style={{ pointerEvents: "none", textAlign: "center" }}>
+                            <span className={carbonDropzoneClasses.icon}>
+                                <Dropzone.Idle><IconCloudUpload size={26} stroke={1.7} /></Dropzone.Idle>
+                                <Dropzone.Accept><IconCloudUpload size={26} stroke={1.7} /></Dropzone.Accept>
+                                <Dropzone.Reject><IconX size={26} stroke={1.7} /></Dropzone.Reject>
+                            </span>
+                            <div className={carbonDropzoneClasses.title}>
+                                <Dropzone.Idle>Docker イメージ tar をドロップ</Dropzone.Idle>
+                                <Dropzone.Accept>ここにドロップ</Dropzone.Accept>
+                                <Dropzone.Reject>対応していないファイルです</Dropzone.Reject>
+                            </div>
+                            <div className={carbonDropzoneClasses.sub}>docker save で出力した .tar ・ 複数可</div>
                         </div>
                     </Dropzone>
-                    <Stack>
-                        <Text
-                            size="sm"
-                            fw="bold"
-                        >
-                            選択済みファイル({form.getValues().files.length})
-                        </Text>
-                        {form.getValues().files.map((file, i) => (
-                            <FileItem
-                                key={i}
-                                file={file}
-                                percent={perFileSnap[i]?.status == "done" ? 100 : Math.floor(((perFileSnap[i]?.received ?? 0) / file.size) * 100)}
-                                status={perFileSnap[i]?.status}
-                                onDelete={() => {
-                                    if (loading) return;
-                                    const currentFiles = form.getValues().files;
-                                    const nextFiles = currentFiles.filter((_, idx) => idx !== i);
-                                    form.setFieldValue('files', nextFiles);
-                                    perFileRef.current = Object.fromEntries(
-                                        nextFiles.map((nextFile, index) => [index, { received: 0, total: nextFile.size, status: 'waiting' }])
-                                    ) as Record<number, { received: number; total?: number; status: string }>;
-                                    setPerFileSnap({ ...perFileRef.current });
-                                }}
-                            />
-                        ))}
-                    </Stack>
-                    <Space h="lg" />
-                    <Checkbox
-                        label="manifestの情報を使用する"
-                        description="イメージ名とタグをmanifestの情報から自動的に決定します"
-                        size="md"
-                        radius="md"
-                        checked={form.getValues().useManifest || form.getValues().files.length > 1}
-                        disabled={form.getValues().files.length > 1}
-                        onChange={e=>form.setFieldValue('useManifest', e.currentTarget.checked)}
-                    />
-                    {!form.getValues().useManifest && (
-                        <>
-                            <TextInput
-                                label="Repository"
-                                description="アップロードするDockerイメージのリポジトリ名"
-                                size="lg"
-                                radius="lg"
-                                placeholder="library/redis"
-                                key={form.key("repo")}
-                                {...form.getInputProps("repo")}
-                                disabled={loading}
-                            />
-                            <TextInput
-                                label="Tag"
-                                size="lg"
-                                radius="lg"
-                                placeholder="7.2"
-                                key={form.key("tag")}
-                                {...form.getInputProps("tag")}
-                                disabled={loading}
-                            />
-                        </>
+
+                    {dockerFiles.length > 0 && (
+                        <CarbonList title={`キュー · ${dockerFiles.length} ファイル`} right={`${dockerCompleted} / ${dockerFiles.length} 完了`}>
+                            {dockerFiles.map((file, i) => (
+                                <FileItem
+                                    key={i}
+                                    file={file}
+                                    percent={perFileSnap[i]?.status == "done" ? 100 : Math.floor(((perFileSnap[i]?.received ?? 0) / file.size) * 100)}
+                                    status={perFileSnap[i]?.status}
+                                    onDelete={() => {
+                                        if (loading) return;
+                                        const currentFiles = form.getValues().files;
+                                        const nextFiles = currentFiles.filter((_, idx) => idx !== i);
+                                        form.setFieldValue('files', nextFiles);
+                                        perFileRef.current = Object.fromEntries(
+                                            nextFiles.map((nextFile, index) => [index, { received: 0, total: nextFile.size, status: 'waiting' }])
+                                        ) as Record<number, { received: number; total?: number; status: string }>;
+                                        setPerFileSnap({ ...perFileRef.current });
+                                    }}
+                                />
+                            ))}
+                        </CarbonList>
                     )}
 
-                    <Space h="md" />
-                    <Button
-                        size="md"
-                        radius="md"
-                        color="docker"
-                        type="submit"
-                        loading={loading}
-                        leftSection={<IconCloudUpload size="1.1rem" />}
-                    >
-                        アップロード実行
-                    </Button>
-                    <Button
-                        type="button"
-                        size="md"
-                        radius="md"
-                        variant="light"
-                        color="docker"
-                        leftSection={<IconRefresh size="1.1rem" />}
-                        onClick={handleRetryFailed}
-                        disabled={loading || failedCount === 0}
-                    >
-                        失敗したイメージを再試行
-                    </Button>
-                </Stack>
-            </form>
+                    <CarbonCheckbox
+                        checked={useManifest}
+                        onChange={(c) => form.setFieldValue('useManifest', c)}
+                        label="manifest の情報を使用する（イメージ名・タグを自動決定）"
+                        disabled={dockerFiles.length > 1}
+                    />
+                    {!useManifest && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                            <CarbonField label="Repository" icon={IconCube} value={form.getValues().repo} onChange={(v) => form.setFieldValue('repo', v)} placeholder="library/redis" disabled={loading} />
+                            <CarbonField label="Tag" value={form.getValues().tag} onChange={(v) => form.setFieldValue('tag', v)} placeholder="7.2" disabled={loading} />
+                        </div>
+                    )}
+                </CarbonSection>
 
-            {error && <Alert
-                color="npm"
-                radius="md"
-                title="エラー"
-                my="lg"
-                variant="light"
-            >
-                {error}
-            </Alert>}
-            
+                <CarbonFooter hint={dockerFiles.length ? `${dockerFiles.length} イメージを push します` : '.tar を追加してください'}>
+                    {failedCount > 0 && !loading && (
+                        <CarbonGhostButton onClick={handleRetryFailed}><IconRefresh size={15} /> 失敗を再試行</CarbonGhostButton>
+                    )}
+                    <CarbonSubmit loading={loading} icon={IconCloudUpload}>アップロード実行</CarbonSubmit>
+                </CarbonFooter>
+            </CarbonForm>
+
+            {error && (
+                <div className={carbonClasses.errorText} style={{ marginTop: 16 }}>
+                    <IconAlertCircle size={14} stroke={2} />{error}
+                </div>
+            )}
+
             <UploadModal
                 opened={opened}
                 onClose={()=>{

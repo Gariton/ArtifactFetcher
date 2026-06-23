@@ -36,6 +36,35 @@ export function CarbonForm({
     );
 }
 
+/** bordered card with accent context (no form wrapper) */
+export function CarbonCard({ accent, children }: { accent: ManagerId; children: ReactNode }) {
+    return (
+        <div className={classes.card} style={accentStyle(accent)}>
+            {children}
+        </div>
+    );
+}
+
+/** styled file-list container with a header */
+export function CarbonList({ title, right, children }: { title: ReactNode; right?: ReactNode; children: ReactNode }) {
+    return (
+        <div className={classes.list}>
+            <div className={classes.listHeader}>
+                <span className={classes.listTitle}>{title}</span>
+                {right && <span className={classes.listMeta}>{right}</span>}
+            </div>
+            <div className={classes.listBody}>{children}</div>
+        </div>
+    );
+}
+
+export const carbonDropzoneClasses = {
+    root: classes.dropzone,
+    icon: classes.dropzoneIcon,
+    title: classes.dropzoneTitle,
+    sub: classes.dropzoneSub,
+};
+
 /** Expandable 接続/設定 panel */
 export function CarbonAuthPanel({
     icon: Icon,
@@ -268,11 +297,11 @@ export function CarbonFooter({ hint, children }: { hint?: ReactNode; children: R
     );
 }
 
-export function CarbonSubmit({ loading, children }: { loading?: boolean; children: ReactNode }) {
+export function CarbonSubmit({ loading, icon: Icon = IconArrowRight, onClick, type = "submit", children }: { loading?: boolean; icon?: TablerIcon; onClick?: () => void; type?: "submit" | "button"; children: ReactNode }) {
     return (
-        <button type="submit" className={classes.btnPrimary} disabled={loading}>
+        <button type={type} className={classes.btnPrimary} disabled={loading} onClick={onClick}>
             {children}
-            <IconArrowRight size={17} stroke={2} />
+            <Icon size={17} stroke={2} />
         </button>
     );
 }

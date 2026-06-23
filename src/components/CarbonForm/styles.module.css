@@ -324,6 +324,70 @@
     border-color: transparent;
 }
 
+/* dropzone */
+.dropzone {
+    border: 1.5px dashed color-mix(in oklch, var(--accent) 45%, transparent) !important;
+    background: color-mix(in oklch, var(--accent) 4%, transparent) !important;
+    border-radius: var(--mantine-radius-lg) !important;
+}
+.dropzone:hover {
+    background: color-mix(in oklch, var(--accent) 8%, transparent) !important;
+}
+.dropzoneIcon {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: color-mix(in oklch, var(--accent) 14%, transparent);
+    color: var(--accent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 14px;
+}
+.dropzoneTitle {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--af-text);
+    margin-bottom: 6px;
+}
+.dropzoneSub {
+    font-size: 13px;
+    color: var(--af-muted);
+}
+
+/* file list */
+.list {
+    background: var(--af-surface);
+    border: 1px solid var(--af-border);
+    border-radius: var(--mantine-radius-lg);
+    overflow: hidden;
+}
+.listHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 13px 18px;
+    border-bottom: 1px solid var(--af-border);
+}
+.listTitle {
+    font-family: var(--mantine-font-family-monospace);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--af-dim);
+}
+.listMeta {
+    font-family: var(--mantine-font-family-monospace);
+    font-size: 11.5px;
+    color: var(--af-muted);
+}
+.listBody {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
 /* footer */
 .footer {
     display: flex;

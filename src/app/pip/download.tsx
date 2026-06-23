@@ -1,7 +1,7 @@
 'use client';
 
 import { ProgressEvent, type PipPackage } from '@/lib/progressBus';
-import { Alert, Button, Group, Space, Stack, Text, Textarea, TextInput } from '@mantine/core';
+import { Alert, Button, Group, Stack, Text, Textarea, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { IconAlertTriangle, IconArrowRight, IconDownload } from '@tabler/icons-react';

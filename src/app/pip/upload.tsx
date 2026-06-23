@@ -8,7 +8,7 @@ import { Accordion, Alert, Button, Checkbox, FileInput, Group, PasswordInput, Sp
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { Dropzone } from '@mantine/dropzone';
-import { IconCloudCog, IconCloudUpload, IconDownload, IconRefresh, IconX } from '@tabler/icons-react';
+import { IconAlertTriangle, IconCloudCog, IconCloudUpload, IconDownload, IconRefresh, IconX } from '@tabler/icons-react';
 import { nanoid } from 'nanoid';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileItem } from '@/components/Upload/FileItem';
@@ -390,7 +390,7 @@ export function UploadPane({ env }: { env: EnvProps }) {
 
     return (
         <div>
-            <Alert variant="light" color="yellow" title="注意" radius="lg" my="xl">
+            <Alert variant="light" color="warning" icon={<IconAlertTriangle size="1.1em" />} radius="md" mb="lg">
                 大きなファイルのアップロードには時間がかかる場合があります。ブラウザを閉じると中断されます。
             </Alert>
 
@@ -545,14 +545,15 @@ export function UploadPane({ env }: { env: EnvProps }) {
                     </Stack>
 
                     <Space h="md" />
-                    <Button type="submit" size="lg" radius="lg" loading={loading}>
-                        アップロード
+                    <Button type="submit" size="md" radius="md" color="pip" loading={loading} leftSection={<IconCloudUpload size="1.1rem" />}>
+                        アップロード実行
                     </Button>
                     <Button
                         type="button"
-                        size="lg"
-                        radius="lg"
+                        size="md"
+                        radius="md"
                         variant="light"
+                        color="pip"
                         leftSection={<IconRefresh size="1.1rem" />}
                         onClick={handleRetryFailed}
                         disabled={loading || failedCount === 0}
@@ -563,12 +564,13 @@ export function UploadPane({ env }: { env: EnvProps }) {
             </form>
 
             {error && (
-                <Alert color="red" radius="lg" title="エラー" my="lg" variant="light">
+                <Alert color="npm" radius="md" title="エラー" my="lg" variant="light">
                     {error}
                 </Alert>
             )}
 
             <PackageUploadModal
+                accent="pip"
                 opened={opened}
                 onClose={() => {
                     close();

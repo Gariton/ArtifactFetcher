@@ -9,7 +9,7 @@ import { Accordion, Alert, Button, Checkbox, Group, PasswordInput, Radio, Space,
 import { Dropzone } from '@mantine/dropzone';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { IconCloudCog, IconCloudUpload, IconDownload, IconX } from '@tabler/icons-react';
+import { IconAlertTriangle, IconCloudCog, IconCloudUpload, IconDownload, IconX } from '@tabler/icons-react';
 import { nanoid } from 'nanoid';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -182,7 +182,7 @@ export function UploadPane({ env }: { env: EnvProps }) {
 
     return (
         <div>
-            <Alert variant="light" color="yellow" title="注意" radius="lg" my="xl">アップロード先RPMリポジトリは URL/認証方式が実装により異なります。PUT/POST を切り替えて利用してください。</Alert>
+            <Alert variant="light" color="warning" icon={<IconAlertTriangle size="1.1em" />} radius="md" mb="lg">アップロード先RPMリポジトリは URL/認証方式が実装により異なります。PUT/POST を切り替えて利用してください。</Alert>
             <Stack>
                 <Dropzone
                     accept={['.rpm', 'application/x-rpm', 'application/x-redhat-package-manager', 'application/octet-stream']}
@@ -209,11 +209,11 @@ export function UploadPane({ env }: { env: EnvProps }) {
                 </Stack></Accordion.Panel></Accordion.Item></Accordion>
 
                 <Space h="md" />
-                <Button size="lg" radius="lg" onClick={startUpload} loading={loading}>Upload</Button>
-                {error && <Alert color="red" radius="lg" title="エラー" my="lg" variant="light">{error}</Alert>}
+                <Button size="md" radius="md" color="rpm" onClick={startUpload} loading={loading} leftSection={<IconCloudUpload size="1.1rem" />}>アップロード実行</Button>
+                {error && <Alert color="npm" radius="md" title="エラー" my="lg" variant="light">{error}</Alert>}
             </Stack>
 
-            <PackageUploadModal opened={opened} onClose={handleClose} jobId={jobId} files={form.getValues().files} perFile={perFileSnap} status={loading ? 'running' : error ? 'error' : jobId ? 'done' : 'idle'} />
+            <PackageUploadModal accent="rpm" opened={opened} onClose={handleClose} jobId={jobId} files={form.getValues().files} perFile={perFileSnap} status={loading ? 'running' : error ? 'error' : jobId ? 'done' : 'idle'} />
         </div>
     );
 }

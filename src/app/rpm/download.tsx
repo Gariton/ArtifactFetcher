@@ -1,12 +1,13 @@
 'use client';
 
-import { PipPackageCard } from '@/components/PipPackageCard';
 import { ProgressEvent, type RpmPackage } from '@/lib/progressBus';
-import { Alert, Button, Checkbox, Group, Modal, Progress, ScrollArea, Space, Stack, Text, Textarea, TextInput, Badge, Loader, Center } from '@mantine/core';
+import { Alert, Button, Checkbox, ScrollArea, Stack, Text, Textarea, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { IconCircleCheck, IconDownload, IconStackFront } from '@tabler/icons-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { IconAlertTriangle, IconArrowRight, IconDownload } from '@tabler/icons-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { FormCard } from '@/components/FormCard';
+import { ProgressBanner, ProgressModal, type ProgressItem } from '@/components/ProgressModal';
 
 const repoOptions = [
     { value: 'centos-stream-9-baseos', label: 'CentOS Stream 9 BaseOS (official)' },
@@ -177,13 +178,34 @@ export function DownloadPane() {
         }
     };
 
-    const totals = useMemo(() => Object.values(perPackage).reduce((acc, item) => ({ received: acc.received + (item.received || 0), total: acc.total + (item.total || 0) }), { received: 0, total: 0 }), [perPackage]);
-    const overallPercent = totals.total > 0 ? Math.floor((totals.received / totals.total) * 100) : 0;
+    const totals = Object.values(perPackage).reduce<{ received: number; total: number }>((acc, item) => ({ received: acc.received + (item.received || 0), total: acc.total + (item.total || 0) }), { received: 0, total: 0 });
+    const indeterminate = status === 'starting' || status === 'running' || packages.length === 0;
+    const overallPercent = totals.total > 0 ? Math.floor((totals.received / totals.total) * 100) : (status === 'done' ? 100 : 0);
+    const state: 'running' | 'done' | 'error' = status === 'done' ? 'done' : status === 'error' ? 'error' : 'running';
+
+    const items: ProgressItem[] = packages.map((pkg, idx) => {
+        const info = perPackage[idx];
+        const raw = info?.status ?? 'waiting';
+        const pct = info?.total ? Math.floor(((info.received || 0) / info.total) * 100) : 0;
+        const st: ProgressItem['status'] = raw === 'done' ? 'done' : raw === 'downloading' ? 'running' : 'waiting';
+        return {
+            key: `${pkg.filename}-${idx}`,
+            label: pkg.name,
+            status: st,
+            percent: pct,
+            meta: st === 'done' ? '完了' : info?.total ? `${(info.total / 1_000_000).toFixed(1)}MB` : '待機',
+        };
+    });
+    const doneCount = items.filter((i) => i.status === 'done').length;
 
     return (
         <div>
-            <Alert variant="light" color="yellow" title="注意" radius="lg" my="xl">依存関係解決を有効にすると、対象パッケージが多くなるため時間がかかる場合があります。</Alert>
+            <Alert variant="light" color="warning" icon={<IconAlertTriangle size="1.1em" />} radius="md" mb="lg">依存関係解決を有効にすると、対象パッケージが多くなるため時間がかかる場合があります。</Alert>
             <form onSubmit={form.onSubmit(onSubmit)}>
+                <FormCard
+                    hint={<Text className="af-mono" fz={12} c="var(--af-dim)">依存込みで収集して tar 化します</Text>}
+                    actions={<Button size="md" radius="md" color="rpm" type="submit" loading={loading} rightSection={<IconArrowRight size="1.05rem" />}>取得を開始</Button>}
+                >
                 <Stack>
                     <Textarea label="Package" description="rpm名をスペースまたは改行区切りで入力" minRows={4} autosize size="lg" radius="lg" placeholder="bash\ncoreutils" key={form.key('packages')} {...form.getInputProps('packages')} disabled={loading} />
                     <TextInput label="Bundle name" size="lg" radius="lg" key={form.key('bundleName')} {...form.getInputProps('bundleName')} disabled={loading} />
@@ -200,27 +222,48 @@ export function DownloadPane() {
                         disabled={loading}
                     />
                     <Checkbox label="依存関係もダウンロード (--resolve --alldeps)" key={form.key('resolveDependencies')} {...form.getInputProps('resolveDependencies', { type: 'checkbox' })} />
-                    <Space h="md" />
-                    <Button size="lg" radius="lg" type="submit" loading={loading}>Download</Button>
                 </Stack>
+                </FormCard>
             </form>
-            {error && <Alert color="red" radius="lg" title="エラー" my="lg" variant="light">{error}</Alert>}
+            {error && <Alert color="npm" radius="md" title="エラー" my="lg" variant="light">{error}</Alert>}
 
-            <Modal opened={opened} onClose={handleCloseModal} centered radius="lg" size="lg" transitionProps={{ transition: 'pop' }} withCloseButton>
-                <Group justify="space-between"><Group gap="xs"><IconStackFront /><Text fw="bold" size="lg">ダウンロード進捗</Text></Group>{status === 'done' ? <Badge color="green" leftSection={<IconCircleCheck size="1em" />} radius="sm">done</Badge> : <Badge color={status === 'error' ? 'red' : 'gray'} leftSection={status === 'error' ? undefined : <Loader size="1em" color="white" />} radius="sm">{status}</Badge>}</Group>
-                {jobId && <Text size="xs" c="dimmed">jobId: {jobId}</Text>}
-                <Stack gap={10} py="xs"><Group justify="space-between"><Text fw="bold">全体の進捗</Text><Text>{overallPercent}%</Text></Group><Progress value={overallPercent} size="lg" radius="xl" /><Text size="xs" c="dimmed">{(totals.received / 1_000_000).toFixed(2)}MB / {(totals.total / 1_000_000).toFixed(2)}MB</Text></Stack>
-                <Stack gap={8}>
-                    <Text size="sm" fw={600}>現在のステージ: {currentStage}</Text>
-                    <ScrollArea h={150} type="auto" offsetScrollbars>
-                        <Stack gap={2}>
-                            {logs.length === 0 ? <Text size="xs" c="dimmed">ログ待機中...</Text> : logs.map((line, idx) => <Text key={`${line}-${idx}`} size="xs" ff="monospace">{line}</Text>)}
-                        </Stack>
-                    </ScrollArea>
-                </Stack>
-                <ScrollArea h={260}><Stack gap="sm">{packages.length === 0 && (status === 'starting' || status === 'running') ? <Center h={120}><Loader /></Center> : packages.map((pkg, idx) => <PipPackageCard key={`${pkg.filename}-${idx}`} index={idx} name={pkg.name} version={pkg.version} filename={`${pkg.filename}${pkg.repositoryFolder ? ` • ${pkg.repositoryFolder}` : ''}`} received={perPackage[idx]?.received ?? 0} total={perPackage[idx]?.total} status={perPackage[idx]?.status ?? 'waiting'} />)}</Stack></ScrollArea>
-                <Button leftSection={<IconDownload size="1em" />} fullWidth radius="lg" mt="md" color="dark" disabled={!jobId || status !== 'done'} component="a" href={jobId ? `/api/build/download?jobId=${jobId}` : '#'} target="_blank">ダウンロード</Button>
-            </Modal>
+            <ProgressModal
+                opened={opened}
+                onClose={handleCloseModal}
+                accent="rpm"
+                title={state === 'done' ? '取得完了' : state === 'error' ? '取得に失敗' : '取得中'}
+                subtitle={`stage: ${currentStage} · ${packages.length} packages`}
+                overallPercent={indeterminate ? undefined : overallPercent}
+                state={state}
+                stats={[
+                    { value: doneCount, unit: `/${packages.length}`, label: '完了 / 全体', accent: state === 'done' },
+                    { value: (totals.received / 1_000_000).toFixed(0), unit: ' MB', label: '取得サイズ' },
+                    { value: packages.length, label: 'パッケージ' },
+                ]}
+                extra={
+                    <>
+                        <Text className="af-mono" fz={10} mb={6} style={{ letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--af-dim)' }}>dnf ログ · {currentStage}</Text>
+                        <ScrollArea.Autosize mah={120}>
+                            <Stack gap={2}>
+                                {logs.length === 0 ? <Text size="xs" c="dimmed">ログ待機中...</Text> : logs.map((line, idx) => <Text key={`${line}-${idx}`} size="xs" ff="monospace" c="var(--af-muted)">{line}</Text>)}
+                            </Stack>
+                        </ScrollArea.Autosize>
+                    </>
+                }
+                items={items}
+                banner={state === 'done' ? <ProgressBanner tone="success" title={`${packages.length} パッケージを取得しました`} detail={`${(totals.received / 1_000_000).toFixed(1)} MB`} /> : undefined}
+                footer={state === 'done' ? (
+                    <>
+                        <Button variant="default" radius="md" onClick={handleCloseModal}>閉じる</Button>
+                        <Button color="success" radius="md" leftSection={<IconDownload size="1rem" />} component="a" href={jobId ? `/api/build/download?jobId=${jobId}` : '#'} target="_blank" disabled={!jobId}>アーカイブをダウンロード</Button>
+                    </>
+                ) : (
+                    <>
+                        <Text className="af-mono" fz={12.5} c="var(--af-muted)">{indeterminate ? '解決しています…' : `${doneCount} / ${packages.length}`}</Text>
+                        <Button variant="default" radius="md" onClick={handleCloseModal}>キャンセル</Button>
+                    </>
+                )}
+            />
         </div>
     );
 }

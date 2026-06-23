@@ -3,7 +3,7 @@ import { Accordion, Alert, Button, Checkbox, Group, PasswordInput, Space, Stack,
 import { useForm } from "@mantine/form";
 import { useDisclosure, useMap } from "@mantine/hooks";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { IconCloudCog, IconCloudUpload, IconDownload, IconRefresh, IconX } from "@tabler/icons-react";
+import { IconAlertTriangle, IconCloudCog, IconCloudUpload, IconDownload, IconRefresh, IconX } from "@tabler/icons-react";
 import { Layer } from "@/lib/progressBus";
 import { ProgressEvent } from "@/lib/progressBus";
 import { Dropzone } from "@mantine/dropzone";
@@ -440,12 +440,12 @@ export function UploadPane() {
         <div>
             <Alert
                 variant="light"
-                color="yellow"
-                title="注意"
-                radius="lg"
-                my="xl"
+                color="warning"
+                icon={<IconAlertTriangle size="1.1em" />}
+                radius="md"
+                mb="lg"
             >
-                大きなイメージの場合、アップロードに時間がかかる場合があります!
+                大きなイメージの場合、アップロードに時間がかかる場合があります。
             </Alert>
 
             <form
@@ -599,18 +599,21 @@ export function UploadPane() {
 
                     <Space h="md" />
                     <Button
-                        size="lg"
-                        radius="lg"
+                        size="md"
+                        radius="md"
+                        color="docker"
                         type="submit"
                         loading={loading}
+                        leftSection={<IconCloudUpload size="1.1rem" />}
                     >
-                        Upload & Push
+                        アップロード実行
                     </Button>
                     <Button
                         type="button"
-                        size="lg"
-                        radius="lg"
+                        size="md"
+                        radius="md"
                         variant="light"
+                        color="docker"
                         leftSection={<IconRefresh size="1.1rem" />}
                         onClick={handleRetryFailed}
                         disabled={loading || failedCount === 0}
@@ -619,10 +622,10 @@ export function UploadPane() {
                     </Button>
                 </Stack>
             </form>
-        
+
             {error && <Alert
-                color="red"
-                radius="lg"
+                color="npm"
+                radius="md"
                 title="エラー"
                 my="lg"
                 variant="light"

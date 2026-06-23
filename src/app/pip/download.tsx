@@ -1,12 +1,13 @@
 'use client';
 
-import { PipPackageCard } from '@/components/PipPackageCard';
 import { ProgressEvent, type PipPackage } from '@/lib/progressBus';
-import { Alert, Badge, Button, Center, Group, Loader, Modal, Progress, ScrollArea, Space, Stack, Text, Textarea, TextInput } from '@mantine/core';
+import { Alert, Button, Group, Space, Stack, Text, Textarea, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { IconCircleCheck, IconDownload, IconStackFront } from '@tabler/icons-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { IconAlertTriangle, IconArrowRight, IconDownload } from '@tabler/icons-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { FormCard } from '@/components/FormCard';
+import { ProgressBanner, ProgressModal, type ProgressItem } from '@/components/ProgressModal';
 
 type Status = 'idle' | 'starting' | 'running' | 'done' | 'error';
 
@@ -33,123 +34,74 @@ function PipDownloadModal({ opened, onClose, jobId, status, packages, perPackage
     packages: PipPackage[];
     perPackage: Record<number, PackageState>;
 }) {
-    const totals = useMemo(() => {
-        return Object.values(perPackage).reduce((acc, info) => {
-            acc.received += info.received || 0;
-            acc.total += info.total || 0;
-            return acc;
-        }, { received: 0, total: 0 });
-    }, [perPackage]);
-    const overallPercent = totals.total > 0 ? Math.floor((totals.received / totals.total) * 100) : undefined;
+    const totals = Object.values(perPackage).reduce((acc, info) => {
+        acc.received += info.received || 0;
+        acc.total += info.total || 0;
+        return acc;
+    }, { received: 0, total: 0 });
+    const indeterminate = status === 'starting' || status === 'running' || packages.length === 0;
+    const overallPercent = totals.total > 0 ? Math.floor((totals.received / totals.total) * 100) : (status === 'done' ? 100 : 0);
+    const state: 'running' | 'done' | 'error' = status === 'done' ? 'done' : status === 'error' ? 'error' : 'running';
 
-    const statusBadge = (() => {
-        switch (status) {
-            case 'done':
-                return (
-                    <Badge color="green" leftSection={<IconCircleCheck size="1em" />} radius="sm">
-                        done
-                    </Badge>
-                );
-            case 'error':
-                return (
-                    <Badge color="red" radius="sm">
-                        error
-                    </Badge>
-                );
-            case 'running':
-            case 'starting':
-                return (
-                    <Badge color="gray" leftSection={<Loader size="1em" color="white" />} radius="sm">
-                        {status}
-                    </Badge>
-                );
-            default:
-                return (
-                    <Badge color="gray" radius="sm">
-                        idle
-                    </Badge>
-                );
-        }
-    })();
+    const items: ProgressItem[] = packages.map((pkg, idx) => {
+        const info = perPackage[idx];
+        const raw = info?.status ?? 'waiting';
+        const pct = info?.total ? Math.floor(((info.received || 0) / info.total) * 100) : 0;
+        const st: ProgressItem['status'] =
+            raw === 'done' ? 'done' :
+            (info?.received ?? 0) > 0 || raw === 'downloading' ? 'running' : 'waiting';
+        return {
+            key: `${pkg.name}-${idx}`,
+            label: `${pkg.name} ${pkg.version}`,
+            status: st,
+            percent: pct,
+            meta: st === 'done' ? '完了' : info?.total ? `${(info.total / 1_000_000).toFixed(1)}MB` : '待機',
+        };
+    });
+    const doneCount = items.filter((i) => i.status === 'done').length;
 
     return (
-        <Modal
+        <ProgressModal
             opened={opened}
             onClose={onClose}
-            centered
-            radius="lg"
-            size="lg"
-            transitionProps={{ transition: 'pop' }}
-            withCloseButton
-        >
-            <Stack gap="md">
-                <Group justify="space-between">
-                    <Group gap="xs">
-                        <IconStackFront />
-                        <Text fw="bold" size="lg">
-                            ダウンロード進捗
-                        </Text>
-                    </Group>
-                    {statusBadge}
-                </Group>
-                {jobId && (
-                    <Text size="xs" c="dimmed">
-                        jobId: {jobId}
+            accent="pip"
+            title={state === 'done' ? '取得完了' : state === 'error' ? '取得に失敗' : '取得中'}
+            subtitle={`${packages.length} packages`}
+            overallPercent={indeterminate ? undefined : overallPercent}
+            state={state}
+            stats={[
+                { value: doneCount, unit: `/${packages.length}`, label: '完了 / 全体', accent: state === 'done' },
+                { value: (totals.received / 1_000_000).toFixed(0), unit: ' MB', label: '取得サイズ' },
+                { value: packages.length, label: 'パッケージ' },
+            ]}
+            items={items}
+            banner={state === 'done' ? (
+                <ProgressBanner tone="success" title={`${packages.length} パッケージを取得しました`} detail={`${(totals.received / 1_000_000).toFixed(1)} MB`} />
+            ) : undefined}
+            footer={state === 'done' ? (
+                <>
+                    <Button variant="default" radius="md" onClick={onClose}>閉じる</Button>
+                    <Button
+                        color="success"
+                        radius="md"
+                        leftSection={<IconDownload size="1rem" />}
+                        component="a"
+                        href={jobId ? `/api/build/download?jobId=${jobId}` : '#'}
+                        target="_blank"
+                        disabled={!jobId}
+                    >
+                        アーカイブをダウンロード
+                    </Button>
+                </>
+            ) : (
+                <>
+                    <Text className="af-mono" fz={12.5} c="var(--af-muted)">
+                        {indeterminate ? '依存を解決しています…' : `${doneCount} / ${packages.length}`}
                     </Text>
-                )}
-
-                <Stack gap={10} py="xs">
-                    <Group justify="space-between">
-                        <Text fw="bold">全体の進捗</Text>
-                        <Text>{overallPercent ?? 0}%</Text>
-                    </Group>
-                    <Progress value={overallPercent ?? 0} size="lg" radius="xl" />
-                    <Text size="xs" c="dimmed">
-                        {(totals.received / 1_000_000).toFixed(2)}MB / {(totals.total / 1_000_000).toFixed(2)}MB
-                    </Text>
-                </Stack>
-
-                {status === 'starting' || status === 'running' ? (
-                    <Center h={420}>
-                        <Loader />
-                    </Center>
-                ) : (
-                    <ScrollArea h={420}>
-                        <Stack gap="sm">
-                            {packages.map((pkg, idx) => {
-                                const info = perPackage[idx];
-                                return (
-                                    <PipPackageCard
-                                        key={`${pkg.name}-${pkg.version}-${idx}`}
-                                        index={idx}
-                                        name={pkg.name}
-                                        version={pkg.version}
-                                        filename={pkg.filename}
-                                        received={info?.received ?? 0}
-                                        total={info?.total}
-                                        status={info?.status ?? 'waiting'}
-                                    />
-                                );
-                            })}
-                        </Stack>
-                    </ScrollArea>
-                )}
-
-                <Button
-                    leftSection={<IconDownload size="1em" />}
-                    fullWidth
-                    radius="lg"
-                    mt="md"
-                    color="dark"
-                    disabled={!jobId || status !== 'done'}
-                    component="a"
-                    href={jobId ? `/api/build/download?jobId=${jobId}` : '#'}
-                    target="_blank"
-                >
-                    ダウンロード
-                </Button>
-            </Stack>
-        </Modal>
+                    <Button variant="default" radius="md" onClick={onClose}>キャンセル</Button>
+                </>
+            )}
+        />
     );
 }
 
@@ -360,11 +312,19 @@ export function DownloadPane() {
 
     return (
         <div>
-            <Alert variant="light" color="yellow" title="注意" radius="lg" my="xl">
+            <Alert variant="light" color="warning" icon={<IconAlertTriangle size="1.1em" />} radius="md" mb="lg">
                 依存パッケージが多い場合は、ダウンロードに時間がかかることがあります。ブラウザを閉じると処理が中断されます。
             </Alert>
 
             <form onSubmit={form.onSubmit(onSubmit)}>
+                <FormCard
+                    hint={<Text className="af-mono" fz={12} c="var(--af-dim)">依存込みで取得して tar 化します</Text>}
+                    actions={
+                        <Button type="submit" size="md" radius="md" color="pip" loading={loading} rightSection={<IconArrowRight size="1.05rem" />}>
+                            取得を開始
+                        </Button>
+                    }
+                >
                 <Stack>
                     <Textarea
                         label="パッケージ名"
@@ -439,21 +399,18 @@ export function DownloadPane() {
                         disabled={loading}
                     />
 
-                    <Space h="md" />
-                    <Button type="submit" size="lg" radius="lg" loading={loading}>
-                        ジョブ開始
-                    </Button>
                 </Stack>
+                </FormCard>
             </form>
 
             {jobId && !opened && status !== 'idle' && (
-                <Button mt="md" variant="light" radius="lg" onClick={open}>
+                <Button mt="md" variant="light" color="pip" radius="md" onClick={open}>
                     進捗を再表示
                 </Button>
             )}
 
             {error && (
-                <Alert color="red" radius="lg" title="エラー" my="lg" variant="light">
+                <Alert color="npm" radius="md" title="エラー" my="lg" variant="light">
                     {error}
                 </Alert>
             )}

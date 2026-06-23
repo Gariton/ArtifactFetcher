@@ -1,12 +1,13 @@
 'use client';
-import { Accordion, Alert, Button, Checkbox, PasswordInput, Space, Stack, TextInput } from "@mantine/core";
+import { Accordion, Alert, Button, Checkbox, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useDisclosure } from "@mantine/hooks";
 import { useRef, useState, useEffect, useCallback } from "react";
-import { IconCloudCog } from "@tabler/icons-react";
+import { IconAlertTriangle, IconArrowRight, IconCloudCog } from "@tabler/icons-react";
 import { Layer } from "@/lib/progressBus";
 import { ProgressEvent } from "@/lib/progressBus";
 import { DownloadModal } from "@/components/Download/Modal";
+import { FormCard } from "@/components/FormCard";
 
 type FormType = {
     registry: string;
@@ -151,25 +152,40 @@ export function DownloadPane() {
         <div>
             <Alert
                 variant="light"
-                color="yellow"
-                title="注意"
-                radius="lg"
-                my="xl"
+                color="warning"
+                icon={<IconAlertTriangle size="1.1em" />}
+                radius="md"
+                mb="lg"
             >
-                大きなイメージの場合、ダウンロードまでに時間がかかる可能性があります!
+                大きなイメージの場合、ダウンロードまでに時間がかかる可能性があります。
             </Alert>
 
             <form
                 onSubmit={form.onSubmit(onSubmit)}
             >
+                <FormCard
+                    hint={<Text className="af-mono" fz={12} c="var(--af-dim)">依存を解決して tar 化します</Text>}
+                    actions={
+                        <Button
+                            size="md"
+                            radius="md"
+                            color="docker"
+                            type="submit"
+                            loading={loading}
+                            rightSection={<IconArrowRight size="1.05rem" />}
+                        >
+                            取得を開始
+                        </Button>
+                    }
+                >
                 <Stack>
                     <Accordion
                         variant="separated"
-                        radius="lg"
+                        radius="md"
                     >
                         <Accordion.Item value="registry_settings" key="registry_settings">
                             <Accordion.Control icon={<IconCloudCog size="1em"/>}>
-                                レジストリ設定（任意・Docker Hub 以外）
+                                接続 / 認証設定（任意・Docker Hub 以外）
                             </Accordion.Control>
                             <Accordion.Panel>
                                 <Stack>
@@ -241,16 +257,8 @@ export function DownloadPane() {
                         {...form.getInputProps("platform")}
                         disabled={loading}
                     />
-                    <Space h="md" />
-                    <Button
-                        size="lg"
-                        radius="lg"
-                        type="submit"
-                        loading={loading}
-                    >
-                        Build & Download
-                    </Button>
                 </Stack>
+                </FormCard>
             </form>
         
             {error && <Alert

@@ -1,3 +1,23 @@
 .link {
-    color: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-0));
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: var(--mantine-radius-md);
+    text-decoration: none;
+    transition: background 120ms ease;
+}
+
+.link:hover {
+    background: var(--af-border);
+}
+
+.adminIcon {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--af-muted);
+    flex: none;
 }

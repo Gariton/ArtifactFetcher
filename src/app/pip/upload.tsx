@@ -4,11 +4,12 @@ import { PackageUploadModal } from '@/components/PackageUpload/Modal';
 import { ProgressEvent } from '@/lib/progressBus';
 import { useRetryableEventSource } from '@/lib/useRetryableEventSource';
 import { buildAuthHeaders } from '@/lib/authHeaders';
-import { Accordion, Alert, Button, Checkbox, FileInput, Group, PasswordInput, Space, Stack, Text, TextInput } from '@mantine/core';
+import { FileInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { Dropzone } from '@mantine/dropzone';
-import { IconCloudCog, IconCloudUpload, IconDownload, IconRefresh, IconX } from '@tabler/icons-react';
+import { IconAlertCircle, IconCloudUpload, IconKey, IconRefresh, IconServer, IconX } from '@tabler/icons-react';
+import { CarbonForm, CarbonSection, CarbonField, CarbonPassword, CarbonCheckbox, CarbonAuthPanel, CarbonFooter, CarbonSubmit, CarbonGhostButton, CarbonList, carbonClasses, carbonDropzoneClasses } from '@/components/CarbonForm';
 import { nanoid } from 'nanoid';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileItem } from '@/components/Upload/FileItem';
@@ -82,7 +83,7 @@ export function UploadPane({ env }: { env: EnvProps }) {
     }, []);
 
     const form = useForm<FormValues>({
-        mode: 'uncontrolled',
+        mode: 'controlled',
         initialValues: {
             files: [],
             repositoryUrl: env.PIP_UPLOAD_REGISTRY || '',
@@ -388,98 +389,42 @@ export function UploadPane({ env }: { env: EnvProps }) {
 
     const failedCount = Object.values(perFileSnap).filter((state) => state?.status === 'error').length;
 
+    const files = form.getValues().files;
+    const completed = Object.values(perFileSnap).filter((s) => s?.status === 'published' || s?.status === 'uploaded').length;
+
     return (
         <div>
-            <Alert variant="light" color="yellow" title="注意" radius="lg" my="xl">
-                大きなファイルのアップロードには時間がかかる場合があります。ブラウザを閉じると中断されます。
-            </Alert>
+            <CarbonForm accent="pip" onSubmit={onSubmit}>
+                <CarbonAuthPanel
+                    icon={IconServer}
+                    title="アップロード先"
+                    sub={`${form.getValues().repositoryUrl?.trim() || 'レジストリ未設定'} · ${form.getValues().token ? 'トークン認証' : (form.getValues().username ? 'Basic 認証' : '認証なし')}`}
+                    configured={Boolean(form.getValues().repositoryUrl?.trim())}
+                    defaultOpen
+                >
+                    <CarbonField label="レジストリ URL" icon={IconServer} value={form.getValues().repositoryUrl} onChange={(v) => form.setFieldValue('repositoryUrl', v)} placeholder="https://nexus.example.com/repository/pypi-hosted/" disabled={loading} />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                        <CarbonField label="ユーザー名" optional small value={form.getValues().username} onChange={(v) => form.setFieldValue('username', v)} placeholder="username" disabled={loading} />
+                        <CarbonPassword label="パスワード" optional value={form.getValues().password} onChange={(v) => form.setFieldValue('password', v)} placeholder="password" disabled={loading} />
+                    </div>
+                    <CarbonPassword label="トークン" optional icon={IconKey} value={form.getValues().token} onChange={(v) => form.setFieldValue('token', v)} placeholder="pypi-xxxxxxxxxxxx" disabled={loading} />
+                    <CarbonCheckbox checked={form.getValues().skipExisting} onChange={(c) => form.setFieldValue('skipExisting', c)} label="すでに存在する場合はスキップ (--skip-existing)" disabled={loading} />
+                    <FileInput
+                        label="信頼済み証明書 (任意)"
+                        description="自己署名や社内CAの場合は PEM 形式の証明書を指定"
+                        placeholder=".pem / .crt"
+                        radius="md"
+                        value={form.getValues().caCert || null}
+                        onChange={(file) => form.setFieldValue('caCert', file)}
+                        disabled={loading}
+                        accept={'.pem,.crt,.cer'}
+                        clearable
+                    />
+                </CarbonAuthPanel>
 
-            <form onSubmit={onSubmit}>
-                <Stack>
-                    <Accordion
-                        variant="separated"
-                        radius="lg"
-                    >
-                        <Accordion.Item
-                            value="upload_settings"
-                            key="upload_settings"
-                        >
-                            <Accordion.Control
-                                icon={<IconCloudCog size="1em"/>}
-                            >
-                                アップロード先設定
-                            </Accordion.Control>
-                            <Accordion.Panel>
-                                <Stack>
-                                    <Stack>
-                                        <TextInput
-                                            label="レジストリURL"
-                                            description="例: https://nexus.example.com/repository/pypi-hosted/"
-                                            size="lg"
-                                            radius="lg"
-                                            placeholder="https://pypi.example.com/"
-                                            key={form.key('repositoryUrl')}
-                                            {...form.getInputProps('repositoryUrl')}
-                                            disabled={loading}
-                                        />
-                                        <Group grow>
-                                            <TextInput
-                                                label="ユーザー名 (任意)"
-                                                size="lg"
-                                                radius="lg"
-                                                placeholder="username"
-                                                key={form.key('username')}
-                                                {...form.getInputProps('username')}
-                                                disabled={loading}
-                                            />
-                                            <PasswordInput
-                                                label="パスワード (任意)"
-                                                size="lg"
-                                                radius="lg"
-                                                placeholder="password"
-                                                key={form.key('password')}
-                                                {...form.getInputProps('password')}
-                                                disabled={loading}
-                                                autoComplete="current-password"
-                                            />
-                                        </Group>
-                                        <TextInput
-                                            label="トークン (任意)"
-                                            description="API Token を使用する場合に入力"
-                                            size="lg"
-                                            radius="lg"
-                                            placeholder="pypi-xxxxxxxxxxxx"
-                                            key={form.key('token')}
-                                            {...form.getInputProps('token')}
-                                            disabled={loading}
-                                        />
-                                        <Checkbox
-                                            label="すでに存在する場合はスキップ (--skip-existing)"
-                                            key={form.key('skipExisting')}
-                                            {...form.getInputProps('skipExisting', { type: 'checkbox' })}
-                                            disabled={loading}
-                                        />
-                                        <FileInput
-                                            label="信頼済み証明書 (任意)"
-                                            description="自己署名や社内CAの場合は PEM 形式の証明書を指定してください"
-                                            placeholder=".pem / .crt"
-                                            size="lg"
-                                            radius="lg"
-                                            key={form.key('caCert')}
-                                            value={form.getValues().caCert || null}
-                                            onChange={(file) => form.setFieldValue('caCert', file)}
-                                            disabled={loading}
-                                            accept={'.pem,.crt,.cer'}
-                                            clearable
-                                        />
-                                    </Stack>
-                                </Stack>
-                            </Accordion.Panel>
-                        </Accordion.Item>
-                    </Accordion>
-
+                <CarbonSection>
                     <Dropzone
-                        onDrop={(files) => form.setFieldValue('files', files)}
+                        onDrop={(dropped) => form.setFieldValue('files', dropped)}
                         accept={{
                             "application/zip": [".zip", ".whl"],
                             "application/vnd.python.wheel": [".whl"],
@@ -487,88 +432,71 @@ export function UploadPane({ env }: { env: EnvProps }) {
                             "application/x-tar": [".tar.gz"],
                             "application/gzip": [".tar.gz"]
                         }}
-                        radius="lg"
                         p="xl"
                         disabled={loading}
+                        className={carbonDropzoneClasses.root}
                     >
-                        <div style={{ pointerEvents: 'none' }}>
-                            <Group justify="center">
-                                <Dropzone.Accept>
-                                    <IconDownload size={50} color="blue.6" stroke={1.5} />
-                                </Dropzone.Accept>
-                                <Dropzone.Reject>
-                                    <IconX size={50} color="red.6" stroke={1.5} />
-                                </Dropzone.Reject>
-                                <Dropzone.Idle>
-                                    <IconCloudUpload size={50} stroke={1.5} />
-                                </Dropzone.Idle>
-                            </Group>
-                            <Text ta="center" fw={700} fz="lg" mt="xl">
-                                <Dropzone.Accept>ここにファイルをドロップ</Dropzone.Accept>
-                                <Dropzone.Idle>.whl/.tar.gz/.zip をアップロード</Dropzone.Idle>
+                        <div style={{ pointerEvents: 'none', textAlign: 'center' }}>
+                            <span className={carbonDropzoneClasses.icon}>
+                                <Dropzone.Idle><IconCloudUpload size={26} stroke={1.7} /></Dropzone.Idle>
+                                <Dropzone.Accept><IconCloudUpload size={26} stroke={1.7} /></Dropzone.Accept>
+                                <Dropzone.Reject><IconX size={26} stroke={1.7} /></Dropzone.Reject>
+                            </span>
+                            <div className={carbonDropzoneClasses.title}>
+                                <Dropzone.Idle>.whl / .tar.gz / .zip をドロップ</Dropzone.Idle>
+                                <Dropzone.Accept>ここにドロップ</Dropzone.Accept>
                                 <Dropzone.Reject>対応していないファイルです</Dropzone.Reject>
-                            </Text>
-                            <Text ta="center" c="dimmed">
-                                ビルド済みの Wheel またはソースディストリビューションを選択してください
-                            </Text>
+                            </div>
+                            <div className={carbonDropzoneClasses.sub}>または クリックして選択 ・ 複数可</div>
                         </div>
                     </Dropzone>
 
-                    <Stack gap="xs">
-                        <Text size="sm" fw={600}>
-                            選択済みファイル ({form.getValues().files.length})
-                        </Text>
-                        {form.getValues().files.map((file, idx) => (
-                            <FileItem
-                                key={`${file.name}-${idx}`}
-                                file={file}
-                                status={perFileSnap[idx]?.status ?? 'waiting'}
-                                percent={(() => {
-                                    const info = perFileSnap[idx];
-                                    const total = info?.total ?? file.size;
-                                    const received = info?.received ?? 0;
-                                    return total > 0 ? Math.min(100, Math.floor((received / total) * 100)) : 0;
-                                })()}
-                                onDelete={(target) => {
-                                    if (loading) return;
-                                    const nextFiles = form.getValues().files.filter((f) => f !== target);
-                                    form.setFieldValue('files', nextFiles);
-                                    perFileRef.current = Object.fromEntries(
-                                        nextFiles.map((f, index) => [index, { received: 0, total: f.size, status: 'waiting' }])
-                                    );
-                                    setPerFileSnap({ ...perFileRef.current });
-                                }}
-                                loading={loading}
-                                disabled={loading}
-                            />
-                        ))}
-                    </Stack>
+                    {files.length > 0 && (
+                        <CarbonList title={`キュー · ${files.length} ファイル`} right={`${completed} / ${files.length} 完了`}>
+                            {files.map((file, idx) => (
+                                <FileItem
+                                    key={`${file.name}-${idx}`}
+                                    file={file}
+                                    status={perFileSnap[idx]?.status ?? 'waiting'}
+                                    percent={(() => {
+                                        const info = perFileSnap[idx];
+                                        const total = info?.total ?? file.size;
+                                        const received = info?.received ?? 0;
+                                        return total > 0 ? Math.min(100, Math.floor((received / total) * 100)) : 0;
+                                    })()}
+                                    onDelete={(target) => {
+                                        if (loading) return;
+                                        const nextFiles = files.filter((f) => f !== target);
+                                        form.setFieldValue('files', nextFiles);
+                                        perFileRef.current = Object.fromEntries(
+                                            nextFiles.map((f, index) => [index, { received: 0, total: f.size, status: 'waiting' }])
+                                        );
+                                        setPerFileSnap({ ...perFileRef.current });
+                                    }}
+                                    loading={loading}
+                                    disabled={loading}
+                                />
+                            ))}
+                        </CarbonList>
+                    )}
+                </CarbonSection>
 
-                    <Space h="md" />
-                    <Button type="submit" size="lg" radius="lg" loading={loading}>
-                        アップロード
-                    </Button>
-                    <Button
-                        type="button"
-                        size="lg"
-                        radius="lg"
-                        variant="light"
-                        leftSection={<IconRefresh size="1.1rem" />}
-                        onClick={handleRetryFailed}
-                        disabled={loading || failedCount === 0}
-                    >
-                        失敗したパッケージを再試行
-                    </Button>
-                </Stack>
-            </form>
+                <CarbonFooter hint={files.length ? `${files.length} ファイルを publish します` : '.whl / .tar.gz / .zip を追加してください'}>
+                    {failedCount > 0 && !loading && (
+                        <CarbonGhostButton onClick={handleRetryFailed}><IconRefresh size={15} /> 失敗を再試行</CarbonGhostButton>
+                    )}
+                    <CarbonSubmit loading={loading} icon={IconCloudUpload}>アップロード実行</CarbonSubmit>
+                </CarbonFooter>
+            </CarbonForm>
 
             {error && (
-                <Alert color="red" radius="lg" title="エラー" my="lg" variant="light">
-                    {error}
-                </Alert>
+                <div className={carbonClasses.errorText} style={{ marginTop: 16 }}>
+                    <IconAlertCircle size={14} stroke={2} />{error}
+                </div>
             )}
 
             <PackageUploadModal
+                accent="pip"
                 opened={opened}
                 onClose={() => {
                     close();

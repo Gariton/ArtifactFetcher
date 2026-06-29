@@ -1,9 +1,10 @@
 'use client';
-import { Group, Space, Tabs, Text, ThemeIcon, Title } from "@mantine/core";
-import { IconBrandDocker, IconDownload, IconUpload } from "@tabler/icons-react";
+import { Space, Tabs } from "@mantine/core";
+import { IconDownload, IconUpload } from "@tabler/icons-react";
 import { DownloadPane } from "./download";
 import { UploadPane } from "./upload";
 import { getEnvironmentVar } from "@/components/actions";
+import { PageHeader } from "@/components/PageHeader";
 import { useEffect, useState } from "react";
 
 type EnvType = {
@@ -28,33 +29,17 @@ export default function Docker() {
 
     return (
         <div>
-            <Group
-                justify="space-between"
-            >
-                <Title>
-                    Docker Image
-                </Title>
-                <ThemeIcon
-                    variant="transparent"
-                    size={60}
-                >
-                    <IconBrandDocker
-                        style={{width: '70%', height: '70%'}}
-                        stroke={1.3}
-                    />
-                </ThemeIcon>
-            </Group>
-            <Text
-                c="dimmed"
-            >
-                Docker HubのリポジトリからAPIを使用してイメージをダウンロードし、ロードできる形で固めたものをダウンロードします
-            </Text>
+            <PageHeader
+                manager="docker"
+                description="レジストリからイメージを依存ごと取得し、docker load 可能な tar を生成。push にも対応。"
+            />
 
-            <Space h="xl" />
+            <Space h="md" />
 
             <Tabs
                 variant="pills"
-                radius="lg"
+                color="docker"
+                radius="xl"
                 defaultValue="download"
             >
                 <Tabs.List>
@@ -74,12 +59,14 @@ export default function Docker() {
                 </Tabs.List>
                 <Tabs.Panel
                     value="download"
+                    py="lg"
                 >
                     <DownloadPane />
                 </Tabs.Panel>
                 {/^(1|true|on|yes)$/i.test(env.DOCKER_UPLOAD || '') && (
                     <Tabs.Panel
                         value="upload"
+                        py="lg"
                     >
                         <UploadPane />
                     </Tabs.Panel>

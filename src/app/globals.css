@@ -1,0 +1,98 @@
+/* ============================================================
+   Carbon design system — global tokens & polish
+   ============================================================ */
+
+:root {
+    /* Artifact accents (oklch, hue のみ変化) */
+    --af-docker: oklch(0.66 0.16 250);
+    --af-npm: oklch(0.62 0.20 25);
+    --af-pip: oklch(0.64 0.18 300);
+    --af-rpm: oklch(0.82 0.14 90);
+    --af-hf: oklch(0.72 0.13 188);
+
+    /* Status */
+    --af-success: oklch(0.74 0.15 150);
+    --af-running: oklch(0.66 0.16 250);
+    --af-warning: oklch(0.80 0.14 80);
+    --af-error: oklch(0.62 0.20 25);
+    --af-skipped: #7B8390;
+
+    /* Radius scale */
+    --af-radius-sm: 9px;
+    --af-radius-md: 14px;
+    --af-radius-lg: 18px;
+}
+
+/* Surfaces — dark (default) */
+:root[data-mantine-color-scheme="dark"] {
+    --af-bg: #0A0B0E;
+    --af-surface: #14161B;
+    --af-raised: #1C1F26;
+    --af-border: rgba(255, 255, 255, 0.07);
+    --af-border-strong: rgba(255, 255, 255, 0.12);
+    --af-text: #F2F4F8;
+    --af-muted: #9AA1AE;
+    --af-dim: #6B7280;
+
+    --mantine-color-body: #0A0B0E;
+}
+
+/* Surfaces — light (warm) */
+:root[data-mantine-color-scheme="light"] {
+    --af-bg: #FBFAF8;
+    --af-surface: #FFFFFF;
+    --af-raised: #F2F0EC;
+    --af-border: #E8E6E2;
+    --af-border-strong: #D8D5CF;
+    --af-text: #1B1C20;
+    --af-muted: #6A6E78;
+    --af-dim: #9C9890;
+
+    --mantine-color-body: #FBFAF8;
+}
+
+body {
+    background: var(--af-bg);
+    color: var(--af-text);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+/* Monospace meta helper */
+.af-mono {
+    font-family: var(--mantine-font-family-monospace);
+    font-variant-ligatures: none;
+}
+
+/* Section eyebrow label */
+.af-eyebrow {
+    font-family: var(--mantine-font-family-monospace);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--af-dim);
+}
+
+/* Subtle scrollbars */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--af-raised) transparent;
+}
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+    background: var(--af-raised);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+    background: var(--af-border-strong);
+    background-clip: padding-box;
+}
+
+::selection {
+    background: oklch(0.66 0.16 250 / 0.35);
+}

@@ -1,12 +1,24 @@
 'use client';
-import { Accordion, Alert, Button, Checkbox, PasswordInput, Space, Stack, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useDisclosure } from "@mantine/hooks";
 import { useRef, useState, useEffect, useCallback } from "react";
-import { IconCloudCog } from "@tabler/icons-react";
+import {
+    IconAlertCircle,
+    IconArrowRight,
+    IconChevronDown,
+    IconCube,
+    IconEye,
+    IconEyeOff,
+    IconKey,
+    IconLock,
+    IconWorld,
+} from "@tabler/icons-react";
 import { Layer } from "@/lib/progressBus";
 import { ProgressEvent } from "@/lib/progressBus";
 import { DownloadModal } from "@/components/Download/Modal";
+import classes from "./download.module.css";
+
+const PLATFORMS = ["linux/amd64", "linux/arm64"];
 
 type FormType = {
     registry: string;
@@ -22,7 +34,9 @@ export function DownloadPane() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<null|string>(null);
     const [opened, {open, close}] = useDisclosure(false);
-    
+    const [authOpen, setAuthOpen] = useState(true);
+    const [showPassword, setShowPassword] = useState(false);
+
     const [jobId, setJobId] = useState<string|null>(null);
     const [status, setStatus] = useState<string>("idle");
     const [layers, setLayers] = useState<Layer[]>([]);
@@ -55,7 +69,7 @@ export function DownloadPane() {
     }, [])
     
     const form = useForm<FormType>({
-        mode: "uncontrolled",
+        mode: "controlled",
         initialValues: {
             registry: "",
             repo: "",
@@ -147,121 +161,184 @@ export function DownloadPane() {
         };
     }, []);
     
+    const values = form.getValues();
+    const registryLabel = values.registry?.trim() || "registry-1.docker.io";
+    const authConfigured = Boolean(values.username && values.password);
+    const authSub = `${registryLabel} · ${values.username ? "認証あり" : "認証なし"} · TLS 検証 ${values.insecureTLS ? "OFF" : "ON"}`;
+    const repoError = form.errors.repo as string | undefined;
+
     return (
         <div>
-            <Alert
-                variant="light"
-                color="yellow"
-                title="注意"
-                radius="lg"
-                my="xl"
-            >
-                大きなイメージの場合、ダウンロードまでに時間がかかる可能性があります!
-            </Alert>
+            <form onSubmit={form.onSubmit(onSubmit)}>
+                <div className={classes.card}>
 
-            <form
-                onSubmit={form.onSubmit(onSubmit)}
-            >
-                <Stack>
-                    <Accordion
-                        variant="separated"
-                        radius="lg"
-                    >
-                        <Accordion.Item value="registry_settings" key="registry_settings">
-                            <Accordion.Control icon={<IconCloudCog size="1em"/>}>
-                                レジストリ設定（任意・Docker Hub 以外）
-                            </Accordion.Control>
-                            <Accordion.Panel>
-                                <Stack>
-                                    <TextInput
-                                        label="Registry"
-                                        description="空欄なら Docker Hub。例: ghcr.io, quay.io, registry.example.com:5000"
-                                        size="lg"
-                                        radius="lg"
-                                        placeholder="ghcr.io"
-                                        key={form.key("registry")}
-                                        {...form.getInputProps("registry")}
+                    {/* ---- 接続 / 認証設定 ---- */}
+                    <div>
+                        <button
+                            type="button"
+                            className={classes.authHeader}
+                            onClick={() => setAuthOpen((o) => !o)}
+                            aria-expanded={authOpen}
+                        >
+                            <span className={classes.fieldIcon}><IconLock size={18} stroke={1.7} /></span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <div className={classes.authHeaderTitle}>接続 / 認証設定</div>
+                                <div className={classes.authSub}>{authSub}</div>
+                            </div>
+                            <span className={`${classes.chip} ${authConfigured ? classes.chipOk : classes.chipMuted}`}>
+                                {authConfigured ? "設定済" : "任意"}
+                            </span>
+                            <span className={`${classes.chevron} ${authOpen ? classes.chevronOpen : ""}`}>
+                                <IconChevronDown size={18} stroke={1.7} />
+                            </span>
+                        </button>
+
+                        {authOpen && (
+                            <div className={classes.authBody}>
+                                <div>
+                                    <label className={classes.label}>レジストリ URL</label>
+                                    <div className={classes.fieldBox}>
+                                        <span className={classes.fieldIcon}><IconWorld size={16} stroke={1.6} /></span>
+                                        <input
+                                            className={classes.input}
+                                            placeholder="registry-1.docker.io"
+                                            value={values.registry}
+                                            onChange={(e) => form.setFieldValue("registry", e.currentTarget.value)}
+                                            disabled={loading}
+                                        />
+                                    </div>
+                                </div>
+                                <div className={classes.grid2}>
+                                    <div>
+                                        <label className={classes.label}>ユーザー名</label>
+                                        <div className={classes.fieldBox}>
+                                            <input
+                                                className={classes.input}
+                                                placeholder="username"
+                                                value={values.username}
+                                                onChange={(e) => form.setFieldValue("username", e.currentTarget.value)}
+                                                disabled={loading}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className={classes.label}>パスワード / トークン</label>
+                                        <div className={classes.fieldBox}>
+                                            <span className={classes.fieldIcon}><IconKey size={16} stroke={1.6} /></span>
+                                            <input
+                                                className={classes.input}
+                                                type={showPassword ? "text" : "password"}
+                                                placeholder="password / token"
+                                                value={values.password}
+                                                onChange={(e) => form.setFieldValue("password", e.currentTarget.value)}
+                                                disabled={loading}
+                                            />
+                                            <button
+                                                type="button"
+                                                className={classes.iconBtn}
+                                                onClick={() => setShowPassword((s) => !s)}
+                                                aria-label={showPassword ? "隠す" : "表示"}
+                                            >
+                                                {showPassword ? <IconEyeOff size={16} stroke={1.6} /> : <IconEye size={16} stroke={1.6} />}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div
+                                    className={classes.toggleRow}
+                                    role="switch"
+                                    aria-checked={values.insecureTLS}
+                                    tabIndex={0}
+                                    onClick={() => form.setFieldValue("insecureTLS", !values.insecureTLS)}
+                                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); form.setFieldValue("insecureTLS", !values.insecureTLS); } }}
+                                >
+                                    <span className={`${classes.toggle} ${values.insecureTLS ? classes.toggleOn : ""}`}>
+                                        <span className={`${classes.knob} ${values.insecureTLS ? classes.knobOn : ""}`} />
+                                    </span>
+                                    <span className={classes.toggleLabel}>TLS 証明書の検証をスキップ</span>
+                                    <span className={classes.warnBadge}>注意</span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* ---- 取得対象 ---- */}
+                    <div className={classes.mainBody}>
+                        <div className={classes.eyebrow}>取得対象</div>
+                        <div>
+                            <label className={`${classes.label} ${classes.labelLg}`}>
+                                リポジトリ <span className={classes.required}>必須</span>
+                            </label>
+                            <div className={`${classes.fieldBox} ${classes.repoBox} ${repoError ? classes.errorBox : ""}`}>
+                                <span className={classes.fieldIcon}><IconCube size={18} stroke={1.7} /></span>
+                                <input
+                                    className={`${classes.input} ${classes.inputLg}`}
+                                    placeholder="library/nginx"
+                                    value={values.repo}
+                                    onChange={(e) => form.setFieldValue("repo", e.currentTarget.value)}
+                                    disabled={loading}
+                                />
+                            </div>
+                            {repoError && (
+                                <div className={classes.errorText}>
+                                    <IconAlertCircle size={13} stroke={2} />{repoError}
+                                </div>
+                            )}
+                        </div>
+                        <div className={classes.grid2}>
+                            <div>
+                                <label className={`${classes.label} ${classes.labelLg}`}>タグ</label>
+                                <div className={classes.fieldBox}>
+                                    <input
+                                        className={`${classes.input} ${classes.inputLg}`}
+                                        placeholder="1.27-alpine"
+                                        value={values.tag}
+                                        onChange={(e) => form.setFieldValue("tag", e.currentTarget.value)}
                                         disabled={loading}
                                     />
-                                    <TextInput
-                                        label="Username"
-                                        description="プライベートイメージの場合に入力（任意）"
-                                        size="lg"
-                                        radius="lg"
-                                        placeholder="username"
-                                        key={form.key("username")}
-                                        {...form.getInputProps("username")}
-                                        disabled={loading}
-                                    />
-                                    <PasswordInput
-                                        label="Password / Token"
-                                        size="lg"
-                                        radius="lg"
-                                        placeholder="password または access token"
-                                        key={form.key("password")}
-                                        {...form.getInputProps("password")}
-                                        disabled={loading}
-                                    />
-                                    <Checkbox
-                                        label="TLS証明書の検証をスキップする"
-                                        description="自己署名証明書の社内レジストリ向け"
-                                        key={form.key("insecureTLS")}
-                                        {...form.getInputProps("insecureTLS", { type: "checkbox" })}
-                                        disabled={loading}
-                                    />
-                                </Stack>
-                            </Accordion.Panel>
-                        </Accordion.Item>
-                    </Accordion>
-                    <TextInput
-                        label="Repository"
-                        description="欲しいDockerイメージ名を入力（Registry欄を空にして ghcr.io/owner/name 形式でも可）"
-                        size="lg"
-                        radius="lg"
-                        placeholder="library/redis"
-                        key={form.key("repo")}
-                        {...form.getInputProps("repo")}
-                        disabled={loading}
-                    />
-                    <TextInput
-                        label="Tag"
-                        size="lg"
-                        radius="lg"
-                        placeholder="7.2"
-                        key={form.key("tag")}
-                        {...form.getInputProps("tag")}
-                        disabled={loading}
-                    />
-                    <TextInput
-                        label="Platform"
-                        size="lg"
-                        radius="lg"
-                        placeholder="linux/amd64"
-                        key={form.key("platform")}
-                        {...form.getInputProps("platform")}
-                        disabled={loading}
-                    />
-                    <Space h="md" />
-                    <Button
-                        size="lg"
-                        radius="lg"
-                        type="submit"
-                        loading={loading}
-                    >
-                        Build & Download
-                    </Button>
-                </Stack>
+                                </div>
+                            </div>
+                            <div>
+                                <label className={`${classes.label} ${classes.labelLg}`}>プラットフォーム</label>
+                                <div className={classes.segmented}>
+                                    {PLATFORMS.map((p) => (
+                                        <button
+                                            key={p}
+                                            type="button"
+                                            className={`${classes.segItem} ${values.platform === p ? classes.segItemActive : ""}`}
+                                            onClick={() => form.setFieldValue("platform", p)}
+                                            disabled={loading}
+                                        >
+                                            {p}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ---- action footer ---- */}
+                    <div className={classes.footer}>
+                        <span className={classes.hint}>依存を解決して tar 化します</span>
+                        <div className={classes.actions}>
+                            {jobId && (
+                                <button type="button" className={classes.btnGhost} onClick={open}>進捗を表示</button>
+                            )}
+                            <button type="submit" className={classes.btnPrimary} disabled={loading}>
+                                取得を開始
+                                <IconArrowRight size={17} stroke={2} />
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
             </form>
-        
-            {error && <Alert
-                color="red"
-                radius="lg"
-                title="エラー"
-                my="lg"
-                variant="light"
-            >
-                {error}
-            </Alert>}
+
+            {error && (
+                <div className={classes.errorText} style={{ marginTop: 16 }}>
+                    <IconAlertCircle size={14} stroke={2} />{error}
+                </div>
+            )}
 
             <DownloadModal
                 opened={opened}

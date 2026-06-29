@@ -1,0 +1,16 @@
+.card {
+    background: var(--af-surface);
+    border: 1px solid var(--af-border);
+    border-radius: var(--mantine-radius-lg);
+    overflow: hidden;
+}
+
+.body {
+    padding: 24px;
+}
+
+.footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--af-border);
+    background: var(--af-bg);
+}

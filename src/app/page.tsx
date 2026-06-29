@@ -1,76 +1,25 @@
-'use client';
-import { ManagerCatalog, type ManagerEntry } from "@/components/ManagerCatalog";
-import { Center, Container, Space, Stack, Title } from "@mantine/core";
-import { IconBrandDocker, IconBrandNpm, IconBrandPython, IconBox, IconBrain } from "@tabler/icons-react";
+import { ManagerCatalog } from "@/components/ManagerCatalog";
+import { Center, Stack, Text, Title } from "@mantine/core";
 import Image from "next/image";
-
-const managers: ManagerEntry[] = [
-    {
-        id: "docker",
-        name: "Docker Image",
-        description: "Docker HUBのAPIを使用して安全かつ高速にDocker Imageをtarball形式でダウンロードすることができます。",
-        href: "/docker",
-        Icon: IconBrandDocker,
-        color: "blue",
-    },
-    {
-        id: "npm",
-        name: "npm package",
-        description: "npm.jsの公式レジストリを使用してnpmのない環境でも依存関係を網羅したパッケージをダウンロードすることができます。",
-        href: "/npm",
-        Icon: IconBrandNpm,
-        color: "red",
-    },
-    {
-        id: "pip",
-        name: "pip package",
-        description: "PyPI や社内レジストリから pip パッケージをまとめて取得し、任意のレジストリにアップロードできます。",
-        href: "/pip",
-        Icon: IconBrandPython,
-        color: "violet",
-    },
-    {
-        id: "hf",
-        name: "Hugging Face model",
-        description: "Hugging Face から GGUF など必要なファイルだけを選択して取得し、Ollama 等のローカル実行に使えるアーカイブを生成できます。",
-        href: "/hf",
-        Icon: IconBrain,
-        color: "teal",
-    },
-    {
-        id: "rpm",
-        name: "rpm package",
-        description: "公式リポジトリや EPEL から依存関係を含めた rpm パッケージを収集し、任意の RPM リポジトリへアップロードできます。",
-        href: "/rpm",
-        Icon: IconBox,
-        color: "yellow",
-    },
-];
 
 export default function Home() {
     return (
-        <Container
-            size="sm"
-        >
-            <Center>
-                <Image
-                    alt="icon"
-                    src="/icon.png"
-                    width={170}
-                    height={170}
-                />
-            </Center>
-            <Title
-                ta="center"
-            >
-                Artifact Fetcher
-            </Title>
-
-            <Space h="xl" />
-
-            <Stack>
-                <ManagerCatalog entries={managers} />
+        <Stack gap={48} pb="xl">
+            <Stack align="center" gap="md" pt="xl" pb="sm">
+                <Image alt="icon" width={120} height={120} src="/icon.png" />
+                <Title order={1} ta="center" style={{ letterSpacing: "-0.02em" }}>
+                    Artifact Fetcher
+                </Title>
+                <Center>
+                    <Text ta="center" c="var(--af-muted)" fz={16} lh={1.6} maw={560}>
+                        外部レジストリの成果物を依存関係ごとサーバー側で取得。閉域環境へ
+                        <Text span c="var(--af-text)"> 1 つのアーカイブ</Text>
+                        で運ぶか、社内レジストリへ直接 push。
+                    </Text>
+                </Center>
             </Stack>
-        </Container>
+
+            <ManagerCatalog />
+        </Stack>
     );
 }

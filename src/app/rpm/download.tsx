@@ -1,12 +1,13 @@
 'use client';
 
-import { PipPackageCard } from '@/components/PipPackageCard';
 import { ProgressEvent, type RpmPackage } from '@/lib/progressBus';
 import { Alert, Button, Checkbox, Group, Modal, Progress, ScrollArea, Space, Stack, Text, Textarea, TextInput, Badge, Loader, Center, PasswordInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { IconCircleCheck, IconDownload, IconStackFront } from '@tabler/icons-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { IconAlertCircle, IconBox, IconDownload } from '@tabler/icons-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ProgressBanner, ProgressModal, type ProgressItem } from '@/components/ProgressModal';
+import { CarbonForm, CarbonSection, CarbonField, CarbonTextarea, CarbonCheckbox, CarbonFooter, CarbonSubmit, carbonClasses } from '@/components/CarbonForm';
 
 const repoOptions = [
     { value: 'centos-stream-9-baseos', label: 'CentOS Stream 9 BaseOS (official)' },
@@ -65,6 +66,7 @@ export function DownloadPane() {
     const esRef = useRef<EventSource | null>(null);
 
     const form = useForm({
+        mode: 'controlled',
         initialValues: {
             packages: '',
             bundleName: 'rpm-offline',
@@ -181,27 +183,44 @@ export function DownloadPane() {
         }
     };
 
-    const totals = useMemo(() => Object.values(perPackage).reduce((acc, item) => ({ received: acc.received + (item.received || 0), total: acc.total + (item.total || 0) }), { received: 0, total: 0 }), [perPackage]);
-    const overallPercent = totals.total > 0 ? Math.floor((totals.received / totals.total) * 100) : 0;
+    const totals = Object.values(perPackage).reduce<{ received: number; total: number }>((acc, item) => ({ received: acc.received + (item.received || 0), total: acc.total + (item.total || 0) }), { received: 0, total: 0 });
+    const indeterminate = status === 'starting' || status === 'running' || packages.length === 0;
+    const overallPercent = totals.total > 0 ? Math.floor((totals.received / totals.total) * 100) : (status === 'done' ? 100 : 0);
+    const state: 'running' | 'done' | 'error' = status === 'done' ? 'done' : status === 'error' ? 'error' : 'running';
 
+    const items: ProgressItem[] = packages.map((pkg, idx) => {
+        const info = perPackage[idx];
+        const raw = info?.status ?? 'waiting';
+        const pct = info?.total ? Math.floor(((info.received || 0) / info.total) * 100) : 0;
+        const st: ProgressItem['status'] = raw === 'done' ? 'done' : raw === 'downloading' ? 'running' : 'waiting';
+        return {
+            key: `${pkg.filename}-${idx}`,
+            label: pkg.name,
+            status: st,
+            percent: pct,
+            meta: st === 'done' ? '完了' : info?.total ? `${(info.total / 1_000_000).toFixed(1)}MB` : '待機',
+        };
+    });
+    const doneCount = items.filter((i) => i.status === 'done').length;
+
+    const fv = form.getValues();
+    const toggleRepo = (value: string) => {
+        const cur = fv.repositories;
+        form.setFieldValue('repositories', cur.includes(value) ? cur.filter((r) => r !== value) : [...cur, value]);
+    };
     return (
         <div>
-            <Alert variant="light" color="yellow" title="注意" radius="lg" my="xl">依存関係解決を有効にすると、対象パッケージが多くなるため時間がかかる場合があります。</Alert>
-            <form onSubmit={form.onSubmit(onSubmit)}>
-                <Stack>
-                    <Textarea label="Package" description="rpm名をスペースまたは改行区切りで入力" minRows={4} autosize size="lg" radius="lg" placeholder="bash\ncoreutils" key={form.key('packages')} {...form.getInputProps('packages')} disabled={loading} />
-                    <TextInput label="Bundle name" size="lg" radius="lg" key={form.key('bundleName')} {...form.getInputProps('bundleName')} disabled={loading} />
-                    <Checkbox.Group label="Repositories" key={form.key('repositories')} {...form.getInputProps('repositories')}>
-                        <Stack mt="xs">{repoOptions.map((repo) => <Checkbox key={repo.value} value={repo.value} label={repo.label} />)}</Stack>
-                    </Checkbox.Group>
-                    <Textarea
-                        label="Custom repositories"
-                        description="1行1件。URLのみ、または `id|label|url` 形式で入力"
-                        placeholder={'https://download.example.com/rhel/8/BaseOS/x86_64/os/\ncustom-rhel8-appstream|RHEL 8 AppStream|https://download.example.com/rhel/8/AppStream/x86_64/os/'}
-                        minRows={3}
-                        key={form.key('customRepositories')}
-                        {...form.getInputProps('customRepositories')}
+            <CarbonForm accent="rpm" onSubmit={form.onSubmit(onSubmit)}>
+                <CarbonSection label="取得対象">
+                    <CarbonTextarea
+                        label={<>Package <span className={carbonClasses.required}>必須</span></>}
+                        value={fv.packages}
+                        onChange={(val) => form.setFieldValue('packages', val)}
+                        placeholder={'bash\ncoreutils'}
+                        rows={4}
                         disabled={loading}
+                        desc="rpm 名をスペースまたは改行区切りで入力"
+                        error={form.errors.packages as string | undefined}
                     />
                     <Group grow align="flex-start">
                         <TextInput
@@ -242,11 +261,68 @@ export function DownloadPane() {
                         <Stack gap={2}>
                             {logs.length === 0 ? <Text size="xs" c="dimmed">ログ待機中...</Text> : logs.map((line, idx) => <Text key={`${line}-${idx}`} size="xs" ff="monospace">{line}</Text>)}
                         </Stack>
-                    </ScrollArea>
-                </Stack>
-                <ScrollArea h={260}><Stack gap="sm">{packages.length === 0 && (status === 'starting' || status === 'running') ? <Center h={120}><Loader /></Center> : packages.map((pkg, idx) => <PipPackageCard key={`${pkg.filename}-${idx}`} index={idx} name={pkg.name} version={pkg.version} filename={`${pkg.filename}${pkg.repositoryFolder ? ` • ${pkg.repositoryFolder}` : ''}`} received={perPackage[idx]?.received ?? 0} total={perPackage[idx]?.total} status={perPackage[idx]?.status ?? 'waiting'} />)}</Stack></ScrollArea>
-                <Button leftSection={<IconDownload size="1em" />} fullWidth radius="lg" mt="md" color="dark" disabled={!jobId || status !== 'done'} component="a" href={jobId ? `/api/build/download?jobId=${jobId}` : '#'} target="_blank">ダウンロード</Button>
-            </Modal>
+                        <CarbonTextarea
+                            label="Custom repositories"
+                            optional
+                            small
+                            value={fv.customRepositories}
+                            onChange={(val) => form.setFieldValue('customRepositories', val)}
+                            placeholder={'https://download.example.com/rhel/8/BaseOS/x86_64/os/\ncustom-rhel8-appstream|RHEL 8 AppStream|https://download.example.com/rhel/8/AppStream/x86_64/os/'}
+                            rows={3}
+                            disabled={loading}
+                            desc="1行1件。URL のみ、または id|label|url 形式で入力"
+                            error={form.errors.customRepositories as string | undefined}
+                        />
+                    </CarbonSection>
+                </div>
+
+                <CarbonFooter hint="依存込みで収集して tar 化します">
+                    <CarbonSubmit loading={loading}>取得を開始</CarbonSubmit>
+                </CarbonFooter>
+            </CarbonForm>
+            {error && (
+                <div className={carbonClasses.errorText} style={{ marginTop: 16 }}>
+                    <IconAlertCircle size={14} stroke={2} />{error}
+                </div>
+            )}
+
+            <ProgressModal
+                opened={opened}
+                onClose={handleCloseModal}
+                accent="rpm"
+                title={state === 'done' ? '取得完了' : state === 'error' ? '取得に失敗' : '取得中'}
+                subtitle={`stage: ${currentStage} · ${packages.length} packages`}
+                overallPercent={indeterminate ? undefined : overallPercent}
+                state={state}
+                stats={[
+                    { value: doneCount, unit: `/${packages.length}`, label: '完了 / 全体', accent: state === 'done' },
+                    { value: (totals.received / 1_000_000).toFixed(0), unit: ' MB', label: '取得サイズ' },
+                    { value: packages.length, label: 'パッケージ' },
+                ]}
+                extra={
+                    <>
+                        <Text className="af-mono" fz={10} mb={6} style={{ letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--af-dim)' }}>dnf ログ · {currentStage}</Text>
+                        <ScrollArea.Autosize mah={120}>
+                            <Stack gap={2}>
+                                {logs.length === 0 ? <Text size="xs" c="dimmed">ログ待機中...</Text> : logs.map((line, idx) => <Text key={`${line}-${idx}`} size="xs" ff="monospace" c="var(--af-muted)">{line}</Text>)}
+                            </Stack>
+                        </ScrollArea.Autosize>
+                    </>
+                }
+                items={items}
+                banner={state === 'done' ? <ProgressBanner tone="success" title={`${packages.length} パッケージを取得しました`} detail={`${(totals.received / 1_000_000).toFixed(1)} MB`} /> : undefined}
+                footer={state === 'done' ? (
+                    <>
+                        <Button variant="default" radius="md" onClick={handleCloseModal}>閉じる</Button>
+                        <Button color="success" radius="md" leftSection={<IconDownload size="1rem" />} component="a" href={jobId ? `/api/build/download?jobId=${jobId}` : '#'} target="_blank" disabled={!jobId}>アーカイブをダウンロード</Button>
+                    </>
+                ) : (
+                    <>
+                        <Text className="af-mono" fz={12.5} c="var(--af-muted)">{indeterminate ? '解決しています…' : `${doneCount} / ${packages.length}`}</Text>
+                        <Button variant="default" radius="md" onClick={handleCloseModal}>キャンセル</Button>
+                    </>
+                )}
+            />
         </div>
     );
 }

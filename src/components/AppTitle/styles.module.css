@@ -1,3 +1,5 @@
 .title {
-    color: var(--mantine-color-default-color);
+    color: var(--af-text);
+    text-decoration: none;
+    cursor: pointer;
 }

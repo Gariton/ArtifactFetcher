@@ -1,11 +1,13 @@
 'use client';
 
 import { ProgressEvent } from '@/lib/progressBus';
-import { Alert, Badge, Button, Card, Group, Loader, Modal, PasswordInput, Progress, ScrollArea, Space, Stack, Text, TextInput, Textarea } from '@mantine/core';
+import { Button, Space, Text } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { IconCircleCheck, IconDownload, IconInfoCircle } from '@tabler/icons-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { IconBrain, IconDownload, IconInfoCircle, IconKey } from '@tabler/icons-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ProgressBanner, ProgressModal, type ProgressItem } from '@/components/ProgressModal';
+import { CarbonForm, CarbonSection, CarbonField, CarbonTextarea, CarbonPassword, CarbonAuthPanel, CarbonFooter, CarbonSubmit, CarbonGhostButton } from '@/components/CarbonForm';
 
 type Status = 'idle' | 'starting' | 'running' | 'done' | 'error';
 
@@ -40,6 +42,7 @@ export function DownloadPane() {
     const esRef = useRef<EventSource | null>(null);
 
     const form = useForm<FormValues>({
+        mode: 'controlled',
         initialValues: {
             repoId: 'Qwen/Qwen2.5-0.5B-Instruct-GGUF',
             revision: 'main',
@@ -53,13 +56,11 @@ export function DownloadPane() {
         },
     });
 
-    const totals = useMemo(() => {
-        return Object.values(fileState).reduce((acc, item) => {
-            acc.received += item.received || 0;
-            acc.total += item.total || 0;
-            return acc;
-        }, { received: 0, total: 0 });
-    }, [fileState]);
+    const totals = Object.values(fileState).reduce<{ received: number; total: number }>((acc, item) => {
+        acc.received += item.received || 0;
+        acc.total += item.total || 0;
+        return acc;
+    }, { received: 0, total: 0 });
 
     const progress = totals.total > 0 ? Math.min(100, Math.floor((totals.received / totals.total) * 100)) : 0;
 
@@ -224,74 +225,105 @@ export function DownloadPane() {
         cleanupAndDelete(current);
     };
 
+    const indeterminate = status === 'starting' || status === 'running' || files.length === 0;
+    const state: 'running' | 'done' | 'error' = status === 'done' ? 'done' : status === 'error' ? 'error' : 'running';
+    const items: ProgressItem[] = files.map((file, index) => {
+        const fs = fileState[index];
+        const itemProgress = fs?.total ? Math.min(100, Math.floor(((fs.received || 0) / fs.total) * 100)) : 0;
+        const st: ProgressItem['status'] = fs?.status === 'done' ? 'done' : fs?.status === 'downloading' ? 'running' : 'waiting';
+        const name = file.path.split('/').pop() || file.path;
+        return {
+            key: `${file.path}-${index}`,
+            label: name,
+            status: st,
+            percent: itemProgress,
+            meta: st === 'done' ? '完了' : fs?.total ? `${(fs.total / 1_000_000).toFixed(1)}MB` : '待機',
+        };
+    });
+    const doneCount = items.filter((i) => i.status === 'done').length;
+
+    const v = form.getValues();
     return (
         <>
-            <form onSubmit={submit}>
-                <Stack>
-                    <TextInput label="Model Repo ID" placeholder="Qwen/Qwen2.5-0.5B-Instruct-GGUF" required {...form.getInputProps('repoId')} />
-                    <Group grow>
-                        <TextInput label="Revision" placeholder="main" {...form.getInputProps('revision')} />
-                        <TextInput label="Bundle name (optional)" placeholder="qwen2.5-local" {...form.getInputProps('bundleName')} />
-                    </Group>
-                    <Textarea label="Include patterns (1行1パターン)" minRows={4} autosize {...form.getInputProps('includePatterns')} />
-                    <Textarea label="Exclude patterns (1行1パターン)" minRows={2} autosize {...form.getInputProps('excludePatterns')} />
-                    <PasswordInput label="Hugging Face Token (gated modelのみ必要)" placeholder="hf_xxx" {...form.getInputProps('token')} />
+            <CarbonForm accent="hf" onSubmit={submit}>
+                <CarbonAuthPanel
+                    icon={IconKey}
+                    title="認証設定"
+                    sub={`Hugging Face Token · ${v.token ? '設定済' : 'gated model のみ必要'}`}
+                    configured={Boolean(v.token)}
+                    defaultOpen={false}
+                >
+                    <CarbonPassword
+                        label="Hugging Face Token"
+                        optional
+                        icon={IconKey}
+                        value={v.token}
+                        onChange={(val) => form.setFieldValue('token', val)}
+                        placeholder="hf_xxx"
+                        disabled={loading}
+                    />
+                </CarbonAuthPanel>
+
+                <CarbonSection label="取得対象">
+                    <CarbonField
+                        label="Model Repo ID"
+                        required
+                        accent
+                        icon={IconBrain}
+                        value={v.repoId}
+                        onChange={(val) => form.setFieldValue('repoId', val)}
+                        placeholder="Qwen/Qwen2.5-0.5B-Instruct-GGUF"
+                        disabled={loading}
+                        error={form.errors.repoId as string | undefined}
+                    />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                        <CarbonField label="Revision" small value={v.revision} onChange={(val) => form.setFieldValue('revision', val)} placeholder="main" disabled={loading} />
+                        <CarbonField label="Bundle name" optional small value={v.bundleName} onChange={(val) => form.setFieldValue('bundleName', val)} placeholder="qwen2.5-local" disabled={loading} />
+                    </div>
+                    <CarbonTextarea label="Include patterns" small value={v.includePatterns} onChange={(val) => form.setFieldValue('includePatterns', val)} rows={4} disabled={loading} desc="1行1パターン" />
+                    <CarbonTextarea label="Exclude patterns" small value={v.excludePatterns} onChange={(val) => form.setFieldValue('excludePatterns', val)} rows={2} disabled={loading} desc="1行1パターン" />
                     {error && (
-                        <Alert color="red" title="Error">{error}</Alert>
+                        <Text c="var(--af-error)" fz={12}>{error}</Text>
                     )}
-                    <Alert icon={<IconInfoCircle size={16} />} color="teal" variant="light" title="Ollama 連携のヒント">
-                        GGUF を含むパターンを指定してダウンロードすると、同梱の README-OLLAMA.md をそのまま手順書として使えます。
-                    </Alert>
-                    <Button type="submit" loading={loading} radius="lg" color="teal" leftSection={<IconDownload size="1em" />}>
-                        Hugging Face から取得開始
-                    </Button>
-                </Stack>
-            </form>
+                </CarbonSection>
 
-            <Modal opened={opened} onClose={closeModal} size="lg" centered title="ダウンロード進捗" radius="lg">
-                <Stack>
-                    <Group justify="space-between">
-                        <Badge color={status === 'done' ? 'green' : status === 'error' ? 'red' : 'gray'} leftSection={status === 'done' ? <IconCircleCheck size="1em" /> : status === 'running' || status === 'starting' ? <Loader size="xs" color="white" /> : undefined}>
-                            {status}
-                        </Badge>
-                        {jobId && <Text size="xs" c="dimmed">jobId: {jobId}</Text>}
-                    </Group>
-                    <Progress value={progress} radius="xl" size="lg" />
-                    <Text size="xs" c="dimmed">{(totals.received / 1_000_000).toFixed(2)}MB / {(totals.total / 1_000_000).toFixed(2)}MB</Text>
-                    <ScrollArea h={320}>
-                        <Stack gap="xs">
-                            {files.map((file, index) => {
-                                const state = fileState[index];
-                                const itemProgress = state?.total ? Math.min(100, Math.floor(((state.received || 0) / state.total) * 100)) : 0;
-                                return (
-                                    <Card withBorder key={`${file.path}-${index}`}>
-                                        <Stack gap={4}>
-                                            <Group justify="space-between">
-                                                <Text size="sm" lineClamp={1}>{file.path}</Text>
-                                                <Badge size="xs" color={state?.status === 'done' ? 'green' : state?.status === 'downloading' ? 'blue' : 'gray'}>{state?.status ?? 'waiting'}</Badge>
-                                            </Group>
-                                            <Progress value={itemProgress} size="sm" radius="xl" />
-                                        </Stack>
-                                    </Card>
-                                );
-                            })}
-                        </Stack>
-                    </ScrollArea>
+                <CarbonFooter hint="必要ファイルを選択取得して tar 化します">
+                    {jobId && <CarbonGhostButton onClick={open}>進捗を表示</CarbonGhostButton>}
+                    <CarbonSubmit loading={loading}>取得を開始</CarbonSubmit>
+                </CarbonFooter>
+            </CarbonForm>
 
-                    <Button
-                        component="a"
-                        href={jobId ? `/api/build/download?jobId=${jobId}` : '#'}
-                        target="_blank"
-                        disabled={!jobId || status !== 'done'}
-                        leftSection={<IconDownload size="1em" />}
-                        radius="lg"
-                        color="dark"
-                        fullWidth
-                    >
-                        tar をダウンロード
-                    </Button>
-                </Stack>
-            </Modal>
+            <Text fz={12} c="var(--af-dim)" mt="sm" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <IconInfoCircle size={14} /> GGUF を含むパターンを指定すると、同梱の README-OLLAMA.md をそのまま手順書として使えます。
+            </Text>
+
+            <ProgressModal
+                opened={opened}
+                onClose={closeModal}
+                accent="hf"
+                title={state === 'done' ? '取得完了' : state === 'error' ? '取得に失敗' : '取得中'}
+                subtitle={`${form.getValues().repoId} · ${files.length} files`}
+                overallPercent={indeterminate ? undefined : progress}
+                state={state}
+                stats={[
+                    { value: doneCount, unit: `/${files.length}`, label: '完了 / 全体', accent: state === 'done' },
+                    { value: (totals.received / 1_000_000).toFixed(0), unit: ' MB', label: '取得サイズ' },
+                    { value: files.length, label: 'ファイル' },
+                ]}
+                items={items}
+                banner={state === 'done' ? <ProgressBanner tone="success" title={`${files.length} ファイルを取得しました`} detail={`${(totals.received / 1_000_000).toFixed(1)} MB`} /> : undefined}
+                footer={state === 'done' ? (
+                    <>
+                        <Button variant="default" radius="md" onClick={closeModal}>閉じる</Button>
+                        <Button color="success" radius="md" leftSection={<IconDownload size="1rem" />} component="a" href={jobId ? `/api/build/download?jobId=${jobId}` : '#'} target="_blank" disabled={!jobId}>tar をダウンロード</Button>
+                    </>
+                ) : (
+                    <>
+                        <Text className="af-mono" fz={12.5} c="var(--af-muted)">{indeterminate ? '解決しています…' : `${doneCount} / ${files.length}`}</Text>
+                        <Button variant="default" radius="md" onClick={closeModal}>キャンセル</Button>
+                    </>
+                )}
+            />
 
             <Space h="md" />
         </>

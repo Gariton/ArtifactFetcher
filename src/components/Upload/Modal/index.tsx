@@ -1,8 +1,8 @@
 import { Accordion, Button, Flex, Group, Modal, ScrollArea, Text } from "@mantine/core";
-import { IconStackFront } from "@tabler/icons-react";
 import { memo } from "react";
 import { ManifestItem } from "./ManifestItem";
 import { Layer } from "@/lib/progressBus";
+import { AccentTile } from "@/components/AccentTile";
 
 type UploadModalType = {
     jobId: string|null;
@@ -37,21 +37,16 @@ export const UploadModal = memo(function UploadModalMemo ({
             >
                 <Group
                     justify="space-between"
+                    wrap="nowrap"
                 >
-                    <Group
-                        gap="xs"
-                    >
-                        <IconStackFront />
-                        <Text
-                            fw="bold"
-                            size="lg"
-                        >
-                            アップロード進捗
-                        </Text>
+                    <Group gap="sm" wrap="nowrap">
+                        <AccentTile color="docker" code="DKR" size="lg" />
+                        <div>
+                            <Text fw={600} fz={15}>アップロード進捗</Text>
+                            <Text className="af-mono" fz={11} c="var(--af-dim)" mt={2}>Registry へ push</Text>
+                        </div>
                     </Group>
-                    <Text
-                        size="xs"
-                    >
+                    <Text className="af-mono" size="xs" c="var(--af-dim)">
                         {jobId}
                     </Text>
                 </Group>
@@ -75,13 +70,13 @@ export const UploadModal = memo(function UploadModalMemo ({
                     </Accordion>
                 </ScrollArea>
                 <Button
-                    color="dark"
+                    variant="default"
                     radius="md"
                     size="md"
                     fullWidth
                     onClick={onClose}
                 >
-                    とじる
+                    閉じる
                 </Button>
             </Flex>
         </Modal>

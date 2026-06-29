@@ -1,0 +1,114 @@
+.modalContent {
+    background: var(--af-surface);
+    border: 1px solid var(--af-border-strong);
+    overflow: hidden;
+}
+
+.header {
+    padding: 20px 22px;
+    border-bottom: 1px solid var(--af-border);
+}
+
+.section {
+    padding: 22px;
+    border-bottom: 1px solid var(--af-border);
+}
+
+.overallTrack {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--af-bg);
+    overflow: hidden;
+}
+
+.overallFill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width 250ms ease;
+}
+
+.statCard {
+    background: var(--af-bg);
+    border: 1px solid var(--af-border);
+    border-radius: var(--mantine-radius-sm);
+    padding: 12px;
+}
+
+.extra {
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--af-border);
+}
+
+.logBox {
+    background: var(--af-bg);
+    border: 1px solid var(--af-border);
+    border-radius: var(--mantine-radius-sm);
+    padding: 10px 12px;
+    max-height: 130px;
+    overflow-y: auto;
+}
+
+.list {
+    padding: 16px 22px;
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.track {
+    flex: 1;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--af-bg);
+    overflow: hidden;
+}
+
+.fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 250ms ease;
+}
+
+.waiting {
+    opacity: 0.5;
+}
+
+.errorRow {
+    background: color-mix(in oklch, var(--af-error) 7%, transparent);
+    border: 1px solid color-mix(in oklch, var(--af-error) 28%, transparent);
+    border-radius: 11px;
+    padding: 12px 13px;
+}
+
+.footer {
+    padding: 15px 22px;
+    border-top: 1px solid var(--af-border);
+    background: var(--af-bg);
+}
+
+.banner {
+    margin: 22px 22px 0;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    border-radius: var(--mantine-radius-md);
+    padding: 16px 18px;
+}
+
+.bannerIcon {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+}
+
+.spin {
+    animation: af-spin 0.9s linear infinite;
+}
+
+@keyframes af-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}

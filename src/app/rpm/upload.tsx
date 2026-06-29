@@ -5,11 +5,11 @@ import { FileItem } from '@/components/Upload/FileItem';
 import { ProgressEvent } from '@/lib/progressBus';
 import { useRetryableEventSource } from '@/lib/useRetryableEventSource';
 import { buildAuthHeaders } from '@/lib/authHeaders';
-import { Accordion, Alert, Button, Checkbox, Group, PasswordInput, Radio, Space, Stack, Text, TextInput } from '@mantine/core';
 import { Dropzone } from '@mantine/dropzone';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { IconCloudCog, IconCloudUpload, IconDownload, IconX } from '@tabler/icons-react';
+import { IconAlertCircle, IconCloudUpload, IconKey, IconServer, IconX } from '@tabler/icons-react';
+import { CarbonCard, CarbonSection, CarbonField, CarbonPassword, CarbonSegmented, CarbonCheckbox, CarbonAuthPanel, CarbonFooter, CarbonSubmit, CarbonList, carbonClasses, carbonDropzoneClasses } from '@/components/CarbonForm';
 import { nanoid } from 'nanoid';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -70,7 +70,7 @@ export function UploadPane({ env }: { env: EnvProps }) {
     }, []);
 
     const form = useForm<FormValues>({
-        mode: 'uncontrolled',
+        mode: 'controlled',
         initialValues: {
             files: [],
             repositoryUrl: env.RPM_UPLOAD_REPOSITORY_URL || '',
@@ -180,40 +180,79 @@ export function UploadPane({ env }: { env: EnvProps }) {
         if (current) fetch(`/api/build/delete?jobId=${current}`, { method: 'POST' }).catch(() => undefined);
     }, [jobId, close, resetStreams]);
 
+    const files = form.getValues().files;
+    const completed = Object.values(perFileSnap).filter((s) => s?.status === 'published' || s?.status === 'uploaded').length;
+
     return (
         <div>
-            <Alert variant="light" color="yellow" title="注意" radius="lg" my="xl">アップロード先RPMリポジトリは URL/認証方式が実装により異なります。PUT/POST を切り替えて利用してください。</Alert>
-            <Stack>
-                <Dropzone
-                    accept={['.rpm', 'application/x-rpm', 'application/x-redhat-package-manager', 'application/octet-stream']}
-                    onDrop={(files) => form.setFieldValue('files', [...form.getValues().files, ...files])}
-                    onReject={() => setError('rpmファイルのみアップロードできます')}
-                    disabled={loading}
+            <CarbonCard accent="rpm">
+                <CarbonAuthPanel
+                    icon={IconServer}
+                    title="アップロード先"
+                    sub={`${form.getValues().repositoryUrl?.trim() || 'レジストリ未設定'} · ${String(form.getValues().method || 'put').toUpperCase()} · ${form.getValues().token ? 'トークン認証' : (form.getValues().username ? 'Basic 認証' : '認証なし')}`}
+                    configured={Boolean(form.getValues().repositoryUrl?.trim())}
+                    defaultOpen
                 >
-                    <Group justify="center" gap="xl" mih={120} style={{ pointerEvents: 'none' }}>
-                        <Dropzone.Accept><IconDownload size={52} color="var(--mantine-color-blue-6)" stroke={1.5} /></Dropzone.Accept>
-                        <Dropzone.Reject><IconX size={52} color="var(--mantine-color-red-6)" stroke={1.5} /></Dropzone.Reject>
-                        <Dropzone.Idle><IconCloudUpload size={52} color="var(--mantine-color-dimmed)" stroke={1.5} /></Dropzone.Idle>
-                        <div><Text size="xl" inline>ここにファイルをドロップするかクリックして選択</Text><Text size="sm" c="dimmed" inline mt={7}>複数rpmファイルをまとめてアップロードできます</Text></div>
-                    </Group>
-                </Dropzone>
-                <Stack gap="xs">{form.getValues().files.map((file, index) => { const total = perFileSnap[index]?.total ?? file.size; const received = perFileSnap[index]?.received ?? 0; const percent = total > 0 ? Math.min(100, Math.floor((received / total) * 100)) : 0; return <FileItem key={`${file.name}-${index}`} file={file} status={perFileSnap[index]?.status ?? 'waiting'} percent={percent} onDelete={(target) => form.setFieldValue('files', form.getValues().files.filter((item) => item !== target))} loading={loading} />; })}</Stack>
+                    <CarbonField label="Repository URL" icon={IconServer} value={form.getValues().repositoryUrl} onChange={(v) => form.setFieldValue('repositoryUrl', v)} placeholder="https://nexus.example.com/repository/rpm-hosted/" disabled={loading} />
+                    <CarbonSegmented
+                        label="HTTP Method"
+                        options={[{ value: 'put', label: 'PUT' }, { value: 'post', label: 'POST' }]}
+                        value={form.getValues().method}
+                        onChange={(v) => form.setFieldValue('method', v as 'put' | 'post')}
+                        disabled={loading}
+                    />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                        <CarbonField label="Username" optional small value={form.getValues().username} onChange={(v) => form.setFieldValue('username', v)} placeholder="username" disabled={loading} />
+                        <CarbonPassword label="Password" optional value={form.getValues().password} onChange={(v) => form.setFieldValue('password', v)} placeholder="password" disabled={loading} />
+                    </div>
+                    <CarbonPassword label="Bearer Token" optional icon={IconKey} value={form.getValues().token} onChange={(v) => form.setFieldValue('token', v)} placeholder="token" disabled={loading} />
+                    <CarbonCheckbox checked={form.getValues().ignoreTlsVerify} onChange={(c) => form.setFieldValue('ignoreTlsVerify', c)} label="証明書の検証を無視する (curl --insecure)" disabled={loading} />
+                </CarbonAuthPanel>
 
-                <Accordion radius="md" variant="contained"><Accordion.Item value="registry"><Accordion.Control icon={<IconCloudCog size={16} />}>アップロード設定</Accordion.Control><Accordion.Panel><Stack>
-                    <TextInput label="Repository URL" placeholder="https://nexus.example.com/repository/rpm-hosted/" key={form.key('repositoryUrl')} {...form.getInputProps('repositoryUrl')} disabled={loading} />
-                    <Radio.Group label="HTTP Method" key={form.key('method')} {...form.getInputProps('method')}><Group mt="xs"><Radio value="put" label="PUT" /><Radio value="post" label="POST" /></Group></Radio.Group>
-                    <TextInput label="Username" key={form.key('username')} {...form.getInputProps('username')} disabled={loading} />
-                    <PasswordInput label="Password" key={form.key('password')} {...form.getInputProps('password')} disabled={loading} />
-                    <PasswordInput label="Bearer Token" key={form.key('token')} {...form.getInputProps('token')} disabled={loading} />
-                    <Checkbox label="証明書の検証を無視する (curl --insecure)" key={form.key('ignoreTlsVerify')} {...form.getInputProps('ignoreTlsVerify', { type: 'checkbox' })} disabled={loading} />
-                </Stack></Accordion.Panel></Accordion.Item></Accordion>
+                <CarbonSection>
+                    <Dropzone
+                        accept={['.rpm', 'application/x-rpm', 'application/x-redhat-package-manager', 'application/octet-stream']}
+                        onDrop={(dropped) => form.setFieldValue('files', [...form.getValues().files, ...dropped])}
+                        onReject={() => setError('rpmファイルのみアップロードできます')}
+                        disabled={loading}
+                        p="xl"
+                        className={carbonDropzoneClasses.root}
+                    >
+                        <div style={{ pointerEvents: 'none', textAlign: 'center' }}>
+                            <span className={carbonDropzoneClasses.icon}>
+                                <Dropzone.Idle><IconCloudUpload size={26} stroke={1.7} /></Dropzone.Idle>
+                                <Dropzone.Accept><IconCloudUpload size={26} stroke={1.7} /></Dropzone.Accept>
+                                <Dropzone.Reject><IconX size={26} stroke={1.7} /></Dropzone.Reject>
+                            </span>
+                            <div className={carbonDropzoneClasses.title}>.rpm をドロップ</div>
+                            <div className={carbonDropzoneClasses.sub}>または クリックして選択 ・ 複数可</div>
+                        </div>
+                    </Dropzone>
 
-                <Space h="md" />
-                <Button size="lg" radius="lg" onClick={startUpload} loading={loading}>Upload</Button>
-                {error && <Alert color="red" radius="lg" title="エラー" my="lg" variant="light">{error}</Alert>}
-            </Stack>
+                    {files.length > 0 && (
+                        <CarbonList title={`キュー · ${files.length} ファイル`} right={`${completed} / ${files.length} 完了`}>
+                            {files.map((file, index) => {
+                                const total = perFileSnap[index]?.total ?? file.size;
+                                const received = perFileSnap[index]?.received ?? 0;
+                                const percent = total > 0 ? Math.min(100, Math.floor((received / total) * 100)) : 0;
+                                return <FileItem key={`${file.name}-${index}`} file={file} status={perFileSnap[index]?.status ?? 'waiting'} percent={percent} onDelete={(target) => form.setFieldValue('files', form.getValues().files.filter((item) => item !== target))} loading={loading} />;
+                            })}
+                        </CarbonList>
+                    )}
+                </CarbonSection>
 
-            <PackageUploadModal opened={opened} onClose={handleClose} jobId={jobId} files={form.getValues().files} perFile={perFileSnap} status={loading ? 'running' : error ? 'error' : jobId ? 'done' : 'idle'} />
+                <CarbonFooter hint={files.length ? `${files.length} ファイルを ${String(form.getValues().method || 'put').toUpperCase()} で送信します` : '.rpm を追加してください'}>
+                    <CarbonSubmit type="button" onClick={startUpload} loading={loading} icon={IconCloudUpload}>アップロード実行</CarbonSubmit>
+                </CarbonFooter>
+            </CarbonCard>
+
+            {error && (
+                <div className={carbonClasses.errorText} style={{ marginTop: 16 }}>
+                    <IconAlertCircle size={14} stroke={2} />{error}
+                </div>
+            )}
+
+            <PackageUploadModal accent="rpm" opened={opened} onClose={handleClose} jobId={jobId} files={form.getValues().files} perFile={perFileSnap} status={loading ? 'running' : error ? 'error' : jobId ? 'done' : 'idle'} />
         </div>
     );
 }

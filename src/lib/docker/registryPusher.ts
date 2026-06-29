@@ -83,7 +83,10 @@ async function pushBlob(c: any, repo: string, tag: string, digest: string, file:
 
     const rawLocation = init.headers['location'];           // 例: /v2/...  or http://127.0.0.1:8081/v2/...
     const base = new URL(c.defaults.baseURL);               // 例: https://nexus/repository/docker-hub-clone
-    const wantPrefix = '/repository/docker-hub-clone';      // ← registry のパス部分を抽出しておく
+    // registry URL のパス部分を抽出する（例: /repository/docker-hub-clone）。
+    // Nexus が Location を /v2/... だけで返す場合に、この prefix を補って
+    // 正しいアップロード先 URL を組み立てる。リポジトリ名を固定しないこと。
+    const wantPrefix = base.pathname.replace(/\/+$/, '');
 
     let uploadUrl: string;
     if (/^https?:\/\//i.test(rawLocation)) {

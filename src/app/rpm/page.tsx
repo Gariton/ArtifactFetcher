@@ -1,11 +1,12 @@
 'use client';
 
-import { Group, Space, Tabs, Text, ThemeIcon, Title } from '@mantine/core';
-import { IconBox, IconDownload, IconUpload } from '@tabler/icons-react';
+import { Space, Tabs } from '@mantine/core';
+import { IconDownload, IconUpload } from '@tabler/icons-react';
 import { DownloadPane } from './download';
 import { UploadPane } from './upload';
 import { useEffect, useState } from 'react';
 import { getEnvironmentVar } from '@/components/actions';
+import { PageHeader } from '@/components/PageHeader';
 
 type RpmEnv = {
     RPM_UPLOAD: string;
@@ -46,26 +47,21 @@ export default function RpmPage() {
 
     return (
         <div>
-            <Group justify="space-between">
-                <Title>rpm package</Title>
-                <ThemeIcon variant="transparent" size={60} color="yellow">
-                    <IconBox style={{ width: '70%', height: '70%' }} stroke={1.3} />
-                </ThemeIcon>
-            </Group>
-            <Text c="dimmed">
-                公式リポジトリや EPEL から依存関係を含めた rpm をダウンロードし、任意の RPM リポジトリにアップロードできます。
-            </Text>
+            <PageHeader
+                manager="rpm"
+                description="公式リポジトリ / EPEL から依存込みで収集し、任意の RPM リポジトリへアップロード。"
+            />
 
-            <Space h="xl" />
+            <Space h="md" />
 
-            <Tabs variant="pills" radius="lg" defaultValue="download">
+            <Tabs variant="pills" color="rpm" radius="xl" defaultValue="download">
                 <Tabs.List>
                     <Tabs.Tab value="download" leftSection={<IconDownload size="1em" />}>ダウンロード</Tabs.Tab>
                     <Tabs.Tab value="upload" leftSection={<IconUpload size="1em" />} disabled={!uploadEnabled}>アップロード</Tabs.Tab>
                 </Tabs.List>
 
-                <Tabs.Panel value="download"><DownloadPane /></Tabs.Panel>
-                {uploadEnabled && <Tabs.Panel value="upload"><UploadPane env={env} /></Tabs.Panel>}
+                <Tabs.Panel value="download" py="lg"><DownloadPane /></Tabs.Panel>
+                {uploadEnabled && <Tabs.Panel value="upload" py="lg"><UploadPane env={env} /></Tabs.Panel>}
             </Tabs>
             <Space h="xl" />
         </div>

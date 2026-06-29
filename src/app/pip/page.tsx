@@ -3,9 +3,10 @@
 import { getEnvironmentVar } from '@/components/actions';
 import { DownloadPane } from './download';
 import { UploadPane } from './upload';
-import { Group, Space, Tabs, Text, ThemeIcon, Title } from '@mantine/core';
-import { IconBrandPython, IconDownload, IconUpload } from '@tabler/icons-react';
+import { Space, Tabs } from '@mantine/core';
+import { IconDownload, IconUpload } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
+import { PageHeader } from '@/components/PageHeader';
 
 type PipEnv = {
     PIP_UPLOAD: string;
@@ -43,19 +44,14 @@ export default function PipPage() {
 
     return (
         <div>
-            <Group justify="space-between">
-                <Title>pip package</Title>
-                <ThemeIcon variant="transparent" size={60} color="violet">
-                    <IconBrandPython style={{ width: '70%', height: '70%' }} stroke={1.3} />
-                </ThemeIcon>
-            </Group>
-            <Text c="dimmed">
-                PyPI や社内レジストリから依存関係を含めた pip パッケージをダウンロードし、tar アーカイブとして取得できます。また、任意の Python パッケージレジストリにアップロードできます。
-            </Text>
+            <PageHeader
+                manager="pip"
+                description="PyPI / 社内インデックスから依存込みでまとめて取得し、tar アーカイブ化。任意のレジストリへアップロードも可能。"
+            />
 
-            <Space h="xl" />
+            <Space h="md" />
 
-            <Tabs variant="pills" radius="lg" defaultValue="download">
+            <Tabs variant="pills" color="pip" radius="xl" defaultValue="download">
                 <Tabs.List>
                     <Tabs.Tab value="download" leftSection={<IconDownload size="1em" />}>
                         ダウンロード
@@ -69,11 +65,11 @@ export default function PipPage() {
                     </Tabs.Tab>
                 </Tabs.List>
 
-                <Tabs.Panel value="download">
+                <Tabs.Panel value="download" py="lg">
                     <DownloadPane />
                 </Tabs.Panel>
                 {uploadEnabled && (
-                    <Tabs.Panel value="upload">
+                    <Tabs.Panel value="upload" py="lg">
                         <UploadPane env={env} />
                     </Tabs.Panel>
                 )}

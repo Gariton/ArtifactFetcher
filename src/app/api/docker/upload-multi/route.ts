@@ -3,7 +3,6 @@ import { NextRequest } from 'next/server';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Readable } from 'node:stream';
 import Busboy from 'busboy';
 import { jobStore } from '@/lib/jobStore';
 import { FileInfo, ProgressBus, RepoTag, globalBusMap as busMap } from '@/lib/progressBus';
@@ -68,8 +67,7 @@ export async function POST(req: NextRequest) {
     }
     
     const bb = Busboy({ headers: { 'content-type': contentType } });
-    const nodeReadable = Readable.fromWeb(req.body as any);
-    
+
     let uploadIndex = 0;
 
     const finished = new Promise<void>((resolve, reject) => {
@@ -82,7 +80,7 @@ export async function POST(req: NextRequest) {
             const myIndex = uploadIndex++;
             let received = 0;
             bus.emitEvent({type: 'item-start', scope: 'upload', index: myIndex, digest: safeName});
-            
+
             fileStream.on('data', (chunk: Buffer) => {
                 received += chunk.length;
                 bus.emitEvent({type: 'item-progress', scope: 'upload', index: myIndex, received});
@@ -92,21 +90,57 @@ export async function POST(req: NextRequest) {
             })
             fileStream.pipe(ws);
 
-            saves.push(new Promise<void>((resolve, reject) => {
+            const save = new Promise<void>((resolve, reject) => {
               ws.on('finish', resolve);
               ws.on('error', reject);
               fileStream.on('error', reject);
-            }));
+            });
+            // 中断・切断時の未処理 rejection（プロセスごと落とし得る）を防ぐ。
+            // 正常系では下の Promise.all(saves) が同じ rejection を検知する。
+            save.catch(() => {});
+            saves.push(save);
         });
         bb.on('error', reject);
-        bb.on('finish', resolve);
+        bb.on('close', resolve);
     });
-    
-    nodeReadable.pipe(bb);
-    await finished;
-    await Promise.all(saves);
-    
+
+    // Next.js(undici) の req.body(Web ReadableStream) を busboy へ手動で流し込む。
+    // Readable.fromWeb().pipe(bb) ではストリーム終端の伝播が不安定で、全バイトが
+    // 届く前に終端し busboy が "Unexpected end of form" を投げることがあるため、
+    // getReader() で最後まで読み切ってから明示的に bb.end() する。
+    const pump = (async () => {
+        const reader = (req.body as ReadableStream<Uint8Array>).getReader();
+        try {
+            for (;;) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                if (value && value.byteLength) {
+                    // バックプレッシャを尊重し、書き込みが詰まったら drain を待つ。
+                    if (!bb.write(Buffer.from(value))) {
+                        await new Promise<void>((res) => bb.once('drain', res));
+                    }
+                }
+            }
+            bb.end();
+        } catch (err) {
+            bb.destroy(err as Error);
+            throw err;
+        }
+    })();
+
+    try {
+        await Promise.all([finished, pump]);
+        await Promise.all(saves);
+    } catch (err: any) {
+        const message = err?.message || 'failed to receive upload';
+        jobStore.set(jobId, { status: 'error', error: message });
+        bus.emitEvent({ type: 'error', message });
+        try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch {}
+        return new Response(JSON.stringify({ error: message }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    }
+
     if (files.length === 0) {
+        try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch {}
         return new Response(JSON.stringify({ error: 'no files' }), { status: 400 });
     }
 

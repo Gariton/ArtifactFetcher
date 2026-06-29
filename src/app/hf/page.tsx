@@ -1,23 +1,18 @@
 'use client';
 
 import { DownloadPane } from './download';
-import { Group, Space, Text, ThemeIcon, Title } from '@mantine/core';
-import { IconBrain } from '@tabler/icons-react';
+import { Space } from '@mantine/core';
+import { PageHeader } from '@/components/PageHeader';
 
 export default function HuggingFacePage() {
     return (
         <div>
-            <Group justify="space-between">
-                <Title>Hugging Face model</Title>
-                <ThemeIcon variant="transparent" size={60} color="teal">
-                    <IconBrain style={{ width: '70%', height: '70%' }} stroke={1.3} />
-                </ThemeIcon>
-            </Group>
-            <Text c="dimmed">
-                Hugging Face からモデルをまとめて取得し、Ollama などのローカル推論環境で使える tar アーカイブを生成します。
-            </Text>
+            <PageHeader
+                manager="hf"
+                description="GGUF 等の必要ファイルだけ選択取得し、Ollama などローカル推論で使える tar アーカイブを生成。"
+            />
 
-            <Space h="xl" />
+            <Space h="md" />
             <DownloadPane />
             <Space h="xl" />
         </div>

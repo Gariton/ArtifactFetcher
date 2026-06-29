@@ -1,12 +1,13 @@
 'use client';
 
-import { PipPackageCard } from '@/components/PipPackageCard';
 import { ProgressEvent, type PipPackage } from '@/lib/progressBus';
-import { Alert, Badge, Button, Center, Group, Loader, Modal, Progress, ScrollArea, Space, Stack, Text, Textarea, TextInput } from '@mantine/core';
+import { Button, Text } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { IconCircleCheck, IconDownload, IconStackFront } from '@tabler/icons-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { IconAlertCircle, IconBox, IconDownload, IconWorld } from '@tabler/icons-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ProgressBanner, ProgressModal, type ProgressItem } from '@/components/ProgressModal';
+import { CarbonForm, CarbonSection, CarbonField, CarbonTextarea, CarbonAuthPanel, CarbonFooter, CarbonSubmit, CarbonGhostButton, carbonClasses } from '@/components/CarbonForm';
 
 type Status = 'idle' | 'starting' | 'running' | 'done' | 'error';
 
@@ -33,123 +34,74 @@ function PipDownloadModal({ opened, onClose, jobId, status, packages, perPackage
     packages: PipPackage[];
     perPackage: Record<number, PackageState>;
 }) {
-    const totals = useMemo(() => {
-        return Object.values(perPackage).reduce((acc, info) => {
-            acc.received += info.received || 0;
-            acc.total += info.total || 0;
-            return acc;
-        }, { received: 0, total: 0 });
-    }, [perPackage]);
-    const overallPercent = totals.total > 0 ? Math.floor((totals.received / totals.total) * 100) : undefined;
+    const totals = Object.values(perPackage).reduce((acc, info) => {
+        acc.received += info.received || 0;
+        acc.total += info.total || 0;
+        return acc;
+    }, { received: 0, total: 0 });
+    const indeterminate = status === 'starting' || status === 'running' || packages.length === 0;
+    const overallPercent = totals.total > 0 ? Math.floor((totals.received / totals.total) * 100) : (status === 'done' ? 100 : 0);
+    const state: 'running' | 'done' | 'error' = status === 'done' ? 'done' : status === 'error' ? 'error' : 'running';
 
-    const statusBadge = (() => {
-        switch (status) {
-            case 'done':
-                return (
-                    <Badge color="green" leftSection={<IconCircleCheck size="1em" />} radius="sm">
-                        done
-                    </Badge>
-                );
-            case 'error':
-                return (
-                    <Badge color="red" radius="sm">
-                        error
-                    </Badge>
-                );
-            case 'running':
-            case 'starting':
-                return (
-                    <Badge color="gray" leftSection={<Loader size="1em" color="white" />} radius="sm">
-                        {status}
-                    </Badge>
-                );
-            default:
-                return (
-                    <Badge color="gray" radius="sm">
-                        idle
-                    </Badge>
-                );
-        }
-    })();
+    const items: ProgressItem[] = packages.map((pkg, idx) => {
+        const info = perPackage[idx];
+        const raw = info?.status ?? 'waiting';
+        const pct = info?.total ? Math.floor(((info.received || 0) / info.total) * 100) : 0;
+        const st: ProgressItem['status'] =
+            raw === 'done' ? 'done' :
+            (info?.received ?? 0) > 0 || raw === 'downloading' ? 'running' : 'waiting';
+        return {
+            key: `${pkg.name}-${idx}`,
+            label: `${pkg.name} ${pkg.version}`,
+            status: st,
+            percent: pct,
+            meta: st === 'done' ? '完了' : info?.total ? `${(info.total / 1_000_000).toFixed(1)}MB` : '待機',
+        };
+    });
+    const doneCount = items.filter((i) => i.status === 'done').length;
 
     return (
-        <Modal
+        <ProgressModal
             opened={opened}
             onClose={onClose}
-            centered
-            radius="lg"
-            size="lg"
-            transitionProps={{ transition: 'pop' }}
-            withCloseButton
-        >
-            <Stack gap="md">
-                <Group justify="space-between">
-                    <Group gap="xs">
-                        <IconStackFront />
-                        <Text fw="bold" size="lg">
-                            ダウンロード進捗
-                        </Text>
-                    </Group>
-                    {statusBadge}
-                </Group>
-                {jobId && (
-                    <Text size="xs" c="dimmed">
-                        jobId: {jobId}
+            accent="pip"
+            title={state === 'done' ? '取得完了' : state === 'error' ? '取得に失敗' : '取得中'}
+            subtitle={`${packages.length} packages`}
+            overallPercent={indeterminate ? undefined : overallPercent}
+            state={state}
+            stats={[
+                { value: doneCount, unit: `/${packages.length}`, label: '完了 / 全体', accent: state === 'done' },
+                { value: (totals.received / 1_000_000).toFixed(0), unit: ' MB', label: '取得サイズ' },
+                { value: packages.length, label: 'パッケージ' },
+            ]}
+            items={items}
+            banner={state === 'done' ? (
+                <ProgressBanner tone="success" title={`${packages.length} パッケージを取得しました`} detail={`${(totals.received / 1_000_000).toFixed(1)} MB`} />
+            ) : undefined}
+            footer={state === 'done' ? (
+                <>
+                    <Button variant="default" radius="md" onClick={onClose}>閉じる</Button>
+                    <Button
+                        color="success"
+                        radius="md"
+                        leftSection={<IconDownload size="1rem" />}
+                        component="a"
+                        href={jobId ? `/api/build/download?jobId=${jobId}` : '#'}
+                        target="_blank"
+                        disabled={!jobId}
+                    >
+                        アーカイブをダウンロード
+                    </Button>
+                </>
+            ) : (
+                <>
+                    <Text className="af-mono" fz={12.5} c="var(--af-muted)">
+                        {indeterminate ? '依存を解決しています…' : `${doneCount} / ${packages.length}`}
                     </Text>
-                )}
-
-                <Stack gap={10} py="xs">
-                    <Group justify="space-between">
-                        <Text fw="bold">全体の進捗</Text>
-                        <Text>{overallPercent ?? 0}%</Text>
-                    </Group>
-                    <Progress value={overallPercent ?? 0} size="lg" radius="xl" />
-                    <Text size="xs" c="dimmed">
-                        {(totals.received / 1_000_000).toFixed(2)}MB / {(totals.total / 1_000_000).toFixed(2)}MB
-                    </Text>
-                </Stack>
-
-                {status === 'starting' || status === 'running' ? (
-                    <Center h={420}>
-                        <Loader />
-                    </Center>
-                ) : (
-                    <ScrollArea h={420}>
-                        <Stack gap="sm">
-                            {packages.map((pkg, idx) => {
-                                const info = perPackage[idx];
-                                return (
-                                    <PipPackageCard
-                                        key={`${pkg.name}-${pkg.version}-${idx}`}
-                                        index={idx}
-                                        name={pkg.name}
-                                        version={pkg.version}
-                                        filename={pkg.filename}
-                                        received={info?.received ?? 0}
-                                        total={info?.total}
-                                        status={info?.status ?? 'waiting'}
-                                    />
-                                );
-                            })}
-                        </Stack>
-                    </ScrollArea>
-                )}
-
-                <Button
-                    leftSection={<IconDownload size="1em" />}
-                    fullWidth
-                    radius="lg"
-                    mt="md"
-                    color="dark"
-                    disabled={!jobId || status !== 'done'}
-                    component="a"
-                    href={jobId ? `/api/build/download?jobId=${jobId}` : '#'}
-                    target="_blank"
-                >
-                    ダウンロード
-                </Button>
-            </Stack>
-        </Modal>
+                    <Button variant="default" radius="md" onClick={onClose}>キャンセル</Button>
+                </>
+            )}
+        />
     );
 }
 
@@ -164,6 +116,7 @@ export function DownloadPane() {
     const esRef = useRef<EventSource | null>(null);
 
     const form = useForm<FormValues>({
+        mode: 'controlled',
         initialValues: {
             packages: '',
             requirementsText: '',
@@ -360,102 +313,92 @@ export function DownloadPane() {
 
     return (
         <div>
-            <Alert variant="light" color="yellow" title="注意" radius="lg" my="xl">
-                依存パッケージが多い場合は、ダウンロードに時間がかかることがあります。ブラウザを閉じると処理が中断されます。
-            </Alert>
-
-            <form onSubmit={form.onSubmit(onSubmit)}>
-                <Stack>
-                    <Textarea
-                        label="パッケージ名"
-                        description="例: requests==2.31.0 fastapi"
-                        size="lg"
-                        radius="lg"
-                        placeholder="requests==2.31.0"
-                        key={form.key('packages')}
-                        {...form.getInputProps('packages')}
-                        minRows={5}
-                        autosize
+            <CarbonForm accent="pip" onSubmit={form.onSubmit(onSubmit)}>
+                <CarbonAuthPanel
+                    icon={IconWorld}
+                    title="インデックス / 設定"
+                    sub={`${form.getValues().indexUrl?.trim() || 'pypi.org/simple'} · ${form.getValues().trustedHosts?.trim() ? 'TLS 検証スキップあり' : 'TLS 検証 ON'}`}
+                    configured={Boolean(form.getValues().indexUrl?.trim())}
+                    defaultOpen={false}
+                >
+                    <CarbonField
+                        label="Index URL"
+                        optional
+                        small
+                        icon={IconWorld}
+                        value={form.getValues().indexUrl}
+                        onChange={(val) => form.setFieldValue('indexUrl', val)}
+                        placeholder="https://pypi.org/simple"
                         disabled={loading}
+                        desc="社内 PyPI などを利用する場合に指定"
                     />
-                    <Textarea
-                        label="requirements.txt (任意)"
-                        description="requirements.txt の内容を貼り付けるとそのまま使用します"
-                        size="lg"
-                        radius="lg"
-                        placeholder="# requirements.txt"
-                        key={form.key('requirementsText')}
-                        {...form.getInputProps('requirementsText')}
-                        minRows={6}
-                        autosize
-                        disabled={loading}
-                    />
-                    <Group grow>
-                        <TextInput
-                            label="バンドル名"
-                            description="出力tarファイル名のベースになります"
-                            size="lg"
-                            radius="lg"
-                            placeholder="pip-offline"
-                            key={form.key('bundleName')}
-                            {...form.getInputProps('bundleName')}
-                            disabled={loading}
-                        />
-                        <TextInput
-                            label="Index URL (任意)"
-                            description="社内PyPIなどを利用する場合に指定"
-                            size="lg"
-                            radius="lg"
-                            placeholder="https://pypi.org/simple"
-                            key={form.key('indexUrl')}
-                            {...form.getInputProps('indexUrl')}
-                            disabled={loading}
-                        />
-                    </Group>
-
-                    <Textarea
-                        label="Extra Index URLs (任意)"
-                        description="複数指定する場合は改行またはカンマ区切りで入力"
-                        size="lg"
-                        radius="lg"
+                    <CarbonTextarea
+                        label="Extra Index URLs"
+                        optional
+                        small
+                        value={form.getValues().extraIndexUrls}
+                        onChange={(val) => form.setFieldValue('extraIndexUrls', val)}
                         placeholder={`https://internal.example.com/simple\nhttps://another.example.com/simple`}
-                        key={form.key('extraIndexUrls')}
-                        {...form.getInputProps('extraIndexUrls')}
-                        minRows={3}
-                        autosize
+                        rows={3}
                         disabled={loading}
+                        desc="複数指定する場合は改行またはカンマ区切り"
                     />
-
-                    <Textarea
-                        label="Trusted Hosts (任意)"
-                        description="セルフサイン証明書などでTLS検証をスキップする場合に指定"
-                        size="lg"
-                        radius="lg"
-                        placeholder={`nexus.example.com`}
-                        key={form.key('trustedHosts')}
-                        {...form.getInputProps('trustedHosts')}
-                        minRows={2}
-                        autosize
+                    <CarbonTextarea
+                        label="Trusted Hosts"
+                        optional
+                        small
+                        value={form.getValues().trustedHosts}
+                        onChange={(val) => form.setFieldValue('trustedHosts', val)}
+                        placeholder="nexus.example.com"
+                        rows={2}
                         disabled={loading}
+                        desc="自己署名証明書で TLS 検証をスキップする場合に指定"
                     />
+                </CarbonAuthPanel>
 
-                    <Space h="md" />
-                    <Button type="submit" size="lg" radius="lg" loading={loading}>
-                        ジョブ開始
-                    </Button>
-                </Stack>
-            </form>
+                <CarbonSection label="取得対象">
+                    <CarbonTextarea
+                        label={<>パッケージ名 <span className={carbonClasses.required}>必須</span></>}
+                        value={form.getValues().packages}
+                        onChange={(val) => form.setFieldValue('packages', val)}
+                        placeholder="requests==2.31.0 fastapi"
+                        rows={5}
+                        disabled={loading}
+                        desc="例: requests==2.31.0 fastapi"
+                        error={form.errors.packages as string | undefined}
+                    />
+                    <CarbonTextarea
+                        label="requirements.txt"
+                        optional
+                        value={form.getValues().requirementsText}
+                        onChange={(val) => form.setFieldValue('requirementsText', val)}
+                        placeholder="# requirements.txt"
+                        rows={6}
+                        disabled={loading}
+                        desc="内容を貼り付けるとそのまま使用します"
+                    />
+                    <CarbonField
+                        label="バンドル名"
+                        optional
+                        icon={IconBox}
+                        value={form.getValues().bundleName}
+                        onChange={(val) => form.setFieldValue('bundleName', val)}
+                        placeholder="pip-offline"
+                        disabled={loading}
+                        desc="出力 tar ファイル名のベースになります"
+                    />
+                </CarbonSection>
 
-            {jobId && !opened && status !== 'idle' && (
-                <Button mt="md" variant="light" radius="lg" onClick={open}>
-                    進捗を再表示
-                </Button>
-            )}
+                <CarbonFooter hint="依存込みで取得して tar 化します">
+                    {jobId && status !== 'idle' && <CarbonGhostButton onClick={open}>進捗を表示</CarbonGhostButton>}
+                    <CarbonSubmit loading={loading}>取得を開始</CarbonSubmit>
+                </CarbonFooter>
+            </CarbonForm>
 
             {error && (
-                <Alert color="red" radius="lg" title="エラー" my="lg" variant="light">
-                    {error}
-                </Alert>
+                <div className={carbonClasses.errorText} style={{ marginTop: 16 }}>
+                    <IconAlertCircle size={14} stroke={2} />{error}
+                </div>
             )}
 
             <PipDownloadModal

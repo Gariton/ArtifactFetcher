@@ -1,4 +1,17 @@
-.link {
-    border-radius: var(--mantine-radius-md);
-    color: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-0));
+.navLink {
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 13px;
+    border-radius: var(--mantine-radius-sm);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1;
+    text-decoration: none;
+    color: var(--af-muted);
+    transition: background 120ms ease, color 120ms ease;
+}
+
+.navLink:hover {
+    color: var(--af-text);
+    background: var(--af-border);
 }

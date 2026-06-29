@@ -1,0 +1,451 @@
+/* Shared Carbon form kit — generalized from the Docker download design.
+   Accent is parametrized via the --accent CSS variable set on .card. */
+
+.card {
+    background: var(--af-surface);
+    border: 1px solid var(--af-border);
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+/* ---- auth / settings panel ---- */
+.authHeader {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 24px;
+    width: 100%;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--af-border);
+    cursor: pointer;
+    text-align: left;
+    color: var(--af-text);
+}
+.authHeaderTitle {
+    font-size: 14px;
+    font-weight: 600;
+}
+.authSub {
+    font-family: var(--mantine-font-family-monospace);
+    font-size: 11px;
+    color: var(--af-dim);
+    margin-top: 2px;
+}
+.chip {
+    font-family: var(--mantine-font-family-monospace);
+    font-size: 10px;
+    border-radius: 6px;
+    padding: 4px 9px;
+    line-height: 1;
+    flex: none;
+}
+.chipOk {
+    color: var(--af-success);
+    background: color-mix(in oklch, var(--af-success) 12%, transparent);
+}
+.chipMuted {
+    color: var(--af-dim);
+    background: var(--af-raised);
+}
+.chevron {
+    color: var(--af-dim);
+    display: inline-flex;
+    transition: transform 160ms ease;
+    flex: none;
+}
+.chevronOpen {
+    transform: rotate(180deg);
+}
+.authBody {
+    padding: 4px 24px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    background: var(--af-bg);
+    border-bottom: 1px solid var(--af-border);
+}
+
+/* ---- section ---- */
+.section {
+    padding: 26px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+.eyebrow {
+    font-family: var(--mantine-font-family-monospace);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--af-dim);
+}
+
+/* ---- fields ---- */
+.label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--af-text);
+    margin-bottom: 7px;
+}
+.labelSm {
+    font-size: 12px;
+    color: var(--af-muted);
+}
+.desc {
+    font-size: 11.5px;
+    color: var(--af-dim);
+    margin-top: 6px;
+}
+.required {
+    font-family: var(--mantine-font-family-monospace);
+    font-size: 10px;
+    color: var(--accent);
+    background: color-mix(in oklch, var(--accent) 14%, transparent);
+    border-radius: 5px;
+    padding: 2px 7px;
+    line-height: 1;
+}
+.optional {
+    font-family: var(--mantine-font-family-monospace);
+    font-size: 10px;
+    color: var(--af-dim);
+    background: var(--af-raised);
+    border-radius: 5px;
+    padding: 2px 7px;
+    line-height: 1;
+}
+
+.fieldBox {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--af-raised);
+    border: 1px solid var(--af-border-strong);
+    border-radius: 10px;
+    padding: 0 12px;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.fieldBox:focus-within {
+    border-color: color-mix(in oklch, var(--accent) 55%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 12%, transparent);
+}
+.fieldIcon {
+    color: var(--af-dim);
+    display: inline-flex;
+    flex: none;
+}
+.input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--af-text);
+    font-family: var(--mantine-font-family-monospace);
+    font-size: 14px;
+    padding: 12px 0;
+}
+.input::placeholder {
+    color: var(--af-dim);
+}
+.inputLg {
+    font-size: 15px;
+    padding: 14px 0;
+}
+.iconBtn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--af-dim);
+    display: inline-flex;
+    padding: 0;
+}
+.iconBtn:hover {
+    color: var(--af-muted);
+}
+
+/* accent (required) field */
+.accentBox {
+    border-width: 1.5px;
+    border-color: color-mix(in oklch, var(--accent) 55%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 12%, transparent);
+}
+.accentBox .fieldIcon {
+    color: var(--accent);
+}
+.errorBox {
+    border-color: color-mix(in oklch, var(--af-error) 65%, transparent) !important;
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--af-error) 12%, transparent) !important;
+}
+.errorText {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--af-error);
+    margin-top: 6px;
+}
+
+/* textarea (block) */
+.textarea {
+    width: 100%;
+    background: var(--af-raised);
+    border: 1px solid var(--af-border-strong);
+    border-radius: 10px;
+    color: var(--af-text);
+    font-family: var(--mantine-font-family-monospace);
+    font-size: 13.5px;
+    line-height: 1.6;
+    padding: 12px 14px;
+    outline: none;
+    resize: vertical;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.textarea::placeholder {
+    color: var(--af-dim);
+}
+.textarea:focus {
+    border-color: color-mix(in oklch, var(--accent) 55%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 12%, transparent);
+}
+
+.grid2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+@media (max-width: 600px) {
+    .grid2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* segmented */
+.segmented {
+    display: flex;
+    background: var(--af-surface);
+    border: 1px solid var(--af-border-strong);
+    border-radius: 10px;
+    padding: 4px;
+    gap: 4px;
+}
+.segItem {
+    flex: 1;
+    text-align: center;
+    padding: 10px 0;
+    border-radius: 7px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--af-muted);
+    font-family: var(--mantine-font-family-monospace);
+    font-size: 12.5px;
+}
+.segItemActive {
+    background: var(--af-raised);
+    color: var(--af-text);
+}
+
+/* toggle / checkbox */
+.toggleRow {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    cursor: pointer;
+    user-select: none;
+}
+.toggle {
+    width: 38px;
+    height: 22px;
+    border-radius: 999px;
+    background: var(--af-raised);
+    border: 1px solid var(--af-border-strong);
+    position: relative;
+    flex: none;
+    transition: background 140ms ease, border-color 140ms ease;
+}
+.toggleOn {
+    background: var(--accent);
+    border-color: transparent;
+}
+.knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--af-dim);
+    transition: transform 140ms ease, background 140ms ease;
+}
+.knobOn {
+    transform: translateX(16px);
+    background: #0A0B0E;
+}
+.toggleLabel {
+    font-size: 13px;
+    color: var(--af-text);
+}
+.warnBadge {
+    font-family: var(--mantine-font-family-monospace);
+    font-size: 10px;
+    color: var(--af-warning);
+    background: color-mix(in oklch, var(--af-warning) 12%, transparent);
+    border-radius: 6px;
+    padding: 3px 8px;
+    line-height: 1;
+}
+
+.checkRow {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    cursor: pointer;
+    user-select: none;
+}
+.checkbox {
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    border: 1.5px solid var(--af-border-strong);
+    background: var(--af-raised);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #0A0B0E;
+    flex: none;
+    transition: background 120ms ease, border-color 120ms ease;
+}
+.checkboxOn {
+    background: var(--accent);
+    border-color: transparent;
+}
+
+/* dropzone */
+.dropzone {
+    border: 1.5px dashed color-mix(in oklch, var(--accent) 45%, transparent) !important;
+    background: color-mix(in oklch, var(--accent) 4%, transparent) !important;
+    border-radius: var(--mantine-radius-lg) !important;
+}
+.dropzone:hover {
+    background: color-mix(in oklch, var(--accent) 8%, transparent) !important;
+}
+.dropzoneIcon {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: color-mix(in oklch, var(--accent) 14%, transparent);
+    color: var(--accent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 14px;
+}
+.dropzoneTitle {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--af-text);
+    margin-bottom: 6px;
+}
+.dropzoneSub {
+    font-size: 13px;
+    color: var(--af-muted);
+}
+
+/* file list */
+.list {
+    background: var(--af-surface);
+    border: 1px solid var(--af-border);
+    border-radius: var(--mantine-radius-lg);
+    overflow: hidden;
+}
+.listHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 13px 18px;
+    border-bottom: 1px solid var(--af-border);
+}
+.listTitle {
+    font-family: var(--mantine-font-family-monospace);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--af-dim);
+}
+.listMeta {
+    font-family: var(--mantine-font-family-monospace);
+    font-size: 11.5px;
+    color: var(--af-muted);
+}
+.listBody {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* footer */
+.footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    border-top: 1px solid var(--af-border);
+    background: var(--af-bg);
+    padding: 18px 24px;
+}
+.hint {
+    font-family: var(--mantine-font-family-monospace);
+    font-size: 11.5px;
+    color: var(--af-dim);
+}
+.actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: none;
+}
+.btnGhost {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    color: var(--af-muted);
+    padding: 11px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--af-border-strong);
+    background: none;
+    cursor: pointer;
+    text-decoration: none;
+}
+.btnGhost:hover {
+    color: var(--af-text);
+    background: var(--af-raised);
+}
+.btnPrimary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #070A10;
+    padding: 12px 20px;
+    border-radius: 10px;
+    background: var(--accent);
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 0 22px color-mix(in oklch, var(--accent) 40%, transparent);
+    transition: filter 120ms ease;
+}
+.btnPrimary:hover {
+    filter: brightness(1.08);
+}
+.btnPrimary:disabled {
+    opacity: 0.6;
+    cursor: default;
+    box-shadow: none;
+}

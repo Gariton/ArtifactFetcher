@@ -72,12 +72,17 @@ export const LayerCard = memo(function LayerCardMemo({
                     <Text
                         size="xs"
                         lineClamp={1}
+                        ff="monospace"
+                        c="dimmed"
                     >
                         {sha}
                     </Text>
                     {status !== "skipped" && (
                         <Progress
                             value={progress}
+                            color={status === "done" ? "success" : "docker"}
+                            radius="xl"
+                            mt={4}
                         />
                     )}
                 </div>

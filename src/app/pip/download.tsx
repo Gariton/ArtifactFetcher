@@ -1,7 +1,7 @@
 'use client';
 
 import { ProgressEvent, type PipPackage } from '@/lib/progressBus';
-import { Alert, Badge, Button, Center, Group, Loader, Modal, Progress, ScrollArea, Space, Stack, Text, Textarea, TextInput, PasswordInput } from '@mantine/core';
+import { Button, Group, Text, TextInput, PasswordInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { IconAlertCircle, IconBox, IconDownload, IconWorld } from '@tabler/icons-react';
@@ -349,29 +349,17 @@ export function DownloadPane() {
                         disabled={loading}
                         desc="複数指定する場合は改行またはカンマ区切り"
                     />
-                    <Group grow>
-                        <TextInput
-                            label="バンドル名"
-                            description="出力tarファイル名のベースになります"
-                            size="lg"
-                            radius="lg"
-                            placeholder="pip-offline"
-                            key={form.key('bundleName')}
-                            {...form.getInputProps('bundleName')}
-                            disabled={loading}
-                        />
-                        <TextInput
-                            label="Index URL (任意)"
-                            description="社内PyPIなどを利用する場合に指定"
-                            size="lg"
-                            radius="lg"
-                            placeholder="https://pypi.org/simple"
-                            key={form.key('indexUrl')}
-                            {...form.getInputProps('indexUrl')}
-                            disabled={loading}
-                        />
-                    </Group>
-
+                    <CarbonTextarea
+                        label="Trusted Hosts"
+                        optional
+                        small
+                        value={form.getValues().trustedHosts}
+                        onChange={(val) => form.setFieldValue('trustedHosts', val)}
+                        placeholder="nexus.example.com"
+                        rows={2}
+                        disabled={loading}
+                        desc="自己署名証明書で TLS 検証をスキップする場合に指定"
+                    />
                     <Group grow align="flex-start">
                         <TextInput
                             label="ユーザー名 (任意)"
@@ -394,20 +382,6 @@ export function DownloadPane() {
                             disabled={loading}
                         />
                     </Group>
-
-                    <Textarea
-                        label="Extra Index URLs (任意)"
-                        description="複数指定する場合は改行またはカンマ区切りで入力"
-                        size="lg"
-                        radius="lg"
-                        placeholder={`https://internal.example.com/simple\nhttps://another.example.com/simple`}
-                        key={form.key('extraIndexUrls')}
-                        {...form.getInputProps('extraIndexUrls')}
-                        minRows={3}
-                        autosize
-                        disabled={loading}
-                        desc="自己署名証明書で TLS 検証をスキップする場合に指定"
-                    />
                 </CarbonAuthPanel>
 
                 <CarbonSection label="取得対象">

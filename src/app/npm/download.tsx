@@ -1,7 +1,7 @@
 'use client';
 
 import { LockEntry } from "@/lib/progressBus";
-import { Alert, Button, Group, Modal, Progress, Space, Stack, Text, ScrollArea, Center, Loader, Badge, Textarea, TextInput, PasswordInput } from "@mantine/core";
+import { Button, Text, Group, TextInput, PasswordInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useDisclosure } from "@mantine/hooks";
 import { IconAlertCircle, IconDownload } from "@tabler/icons-react";
@@ -173,17 +173,13 @@ export function DownloadPane () {
                             disabled={loading}
                         />
                     </Group>
-                    <Space h="md" />
-                    <Button
-                        size="lg"
-                        radius="lg"
-                        type="submit"
-                        loading={loading}
-                    >
-                        Download
-                    </Button>
-                </Stack>
-            </form>
+                </CarbonSection>
+
+                <CarbonFooter hint="依存を解決して tar 化します">
+                    {jobId && status !== "idle" && <CarbonGhostButton onClick={open}>進捗を表示</CarbonGhostButton>}
+                    <CarbonSubmit loading={loading}>取得を開始</CarbonSubmit>
+                </CarbonFooter>
+            </CarbonForm>
 
             {error && (
                 <div className={carbonClasses.errorText} style={{ marginTop: 16 }}>

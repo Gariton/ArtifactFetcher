@@ -1,14 +1,14 @@
 'use client';
 
 import { LockEntry } from "@/lib/progressBus";
-import { Button, Text, Group, TextInput, PasswordInput } from "@mantine/core";
+import { Button, Text } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useDisclosure } from "@mantine/hooks";
-import { IconAlertCircle, IconDownload } from "@tabler/icons-react";
+import { IconAlertCircle, IconDownload, IconWorld, IconUser, IconKey } from "@tabler/icons-react";
 import { useCallback, useRef, useState } from "react";
 import { ProgressEvent } from "@/lib/progressBus";
 import { ProgressBanner, ProgressModal, type ProgressItem } from "@/components/ProgressModal";
-import { CarbonForm, CarbonSection, CarbonTextarea, CarbonFooter, CarbonSubmit, CarbonGhostButton, carbonClasses } from "@/components/CarbonForm";
+import { CarbonForm, CarbonSection, CarbonTextarea, CarbonAuthPanel, CarbonField, CarbonPassword, CarbonFooter, CarbonSubmit, CarbonGhostButton, carbonClasses } from "@/components/CarbonForm";
 
 export function DownloadPane () {
     const [loading, setLoading] = useState(false);
@@ -130,49 +130,57 @@ export function DownloadPane () {
     return (
         <div>
             <CarbonForm accent="npm" onSubmit={form.onSubmit(onSubmit)}>
+                <CarbonAuthPanel
+                    icon={IconWorld}
+                    title="レジストリ / 認証"
+                    sub={`${form.getValues().registry?.trim() || 'registry.npmjs.org'} · ${form.getValues().username || form.getValues().password ? '認証あり' : '認証なし'}`}
+                    configured={Boolean(form.getValues().registry?.trim() || form.getValues().username || form.getValues().password)}
+                    defaultOpen={false}
+                >
+                    <CarbonField
+                        label="レジストリ URL"
+                        optional
+                        small
+                        icon={IconWorld}
+                        value={form.getValues().registry}
+                        onChange={(v) => form.setFieldValue("registry", v)}
+                        placeholder="https://npm.pkg.github.com"
+                        disabled={loading}
+                        desc="プライベートレジストリを使う場合に指定（未指定なら npm 公式）"
+                    />
+                    <CarbonField
+                        label="ユーザー名"
+                        optional
+                        small
+                        icon={IconUser}
+                        value={form.getValues().username}
+                        onChange={(v) => form.setFieldValue("username", v)}
+                        placeholder="username"
+                        disabled={loading}
+                        desc="未指定の場合はパスワード欄をトークンとして扱います"
+                    />
+                    <CarbonPassword
+                        label="パスワード / トークン"
+                        optional
+                        icon={IconKey}
+                        value={form.getValues().password}
+                        onChange={(v) => form.setFieldValue("password", v)}
+                        placeholder="password / token"
+                        disabled={loading}
+                    />
+                </CarbonAuthPanel>
+
                 <CarbonSection label="取得対象">
                     <CarbonTextarea
                         label={<>パッケージ名 <span className={carbonClasses.required}>必須</span></>}
                         value={form.getValues().packages}
                         onChange={(v) => form.setFieldValue("packages", v)}
-                        placeholder="react@^18 axios"
+                        placeholder="@gariton/callisto-client react@^18"
                         rows={5}
                         disabled={loading}
                         desc="ダウンロードしたいパッケージ名をスペースまたは改行で区切って入力"
                         error={form.errors.packages as string | undefined}
                     />
-                    <TextInput
-                        label="レジストリ URL"
-                        description="プライベートレジストリを使う場合に指定（未指定なら npm 公式）"
-                        size="lg"
-                        radius="lg"
-                        placeholder="https://nexus.example.com/repository/npm-registry/"
-                        key={form.key("registry")}
-                        {...form.getInputProps("registry")}
-                        disabled={loading}
-                    />
-                    <Group grow align="flex-start">
-                        <TextInput
-                            label="ユーザー名"
-                            description="プライベートレジストリの認証用（任意）"
-                            size="lg"
-                            radius="lg"
-                            placeholder="username"
-                            key={form.key("username")}
-                            {...form.getInputProps("username")}
-                            disabled={loading}
-                        />
-                        <PasswordInput
-                            label="パスワード / トークン"
-                            description="ユーザー名なしの場合はトークンとして扱います"
-                            size="lg"
-                            radius="lg"
-                            placeholder="password / token"
-                            key={form.key("password")}
-                            {...form.getInputProps("password")}
-                            disabled={loading}
-                        />
-                    </Group>
                 </CarbonSection>
 
                 <CarbonFooter hint="依存を解決して tar 化します">

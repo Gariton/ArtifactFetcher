@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { globalBusMap } from '@/lib/progressBus';
+import { ProgressBus, globalBusMap } from '@/lib/progressBus';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -7,8 +7,16 @@ export const dynamic = 'force-dynamic';
 export const GET = async (req: NextRequest) => {
     const { searchParams } = new URL(req.url);
     const jobId = searchParams.get('jobId') || '';
-    const bus = globalBusMap.get(jobId);
-    if (!bus) return new Response('Not Found', { status: 404 });
+    if (!jobId) return new Response('Bad Request', { status: 400 });
+
+    // アップロード系のジョブはクライアントが先に SSE へ接続し、その後に
+    // upload-multi などの POST がバスを生成する。接続が先行してもよいよう、
+    // バスが未生成ならここで作成しておく（POST 側は get() で同じバスを再利用する）。
+    let bus = globalBusMap.get(jobId);
+    if (!bus) {
+        bus = new ProgressBus();
+        globalBusMap.set(jobId, bus);
+    }
     
     const stream = new ReadableStream({
         start(controller) {

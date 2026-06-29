@@ -74,5 +74,12 @@ export function middleware(req: NextRequest) {
 
 export const config = {
     // 静的アセットと Next.js 内部リクエストを除く全ルートを保護する。
-    matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+    //
+    // ただしアップロード系 API（multipart の大容量ボディ）は除外する。
+    // ミドルウェアを通過するリクエストは Next.js がボディを tee して
+    // experimental.middlewareClientMaxBodySize（既定 10MB）で打ち切るため、
+    // 大きな tar/パッケージが途中で切られ busboy が "Unexpected end of form" を
+    // 投げてしまう。これらのルートはミドルウェアを通さず元のボディを
+    // 直接ストリーミングさせる（メモリにバッファせず安全に大容量を扱える）。
+    matcher: ['/((?!_next/static|_next/image|favicon.ico|api/(?:docker|npm|pip|rpm)/upload).*)'],
 };

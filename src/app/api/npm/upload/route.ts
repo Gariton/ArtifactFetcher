@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server';
-import { Readable } from 'node:stream';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -48,7 +47,6 @@ export async function POST(req: NextRequest) {
     jobStore.set(jobId, { status: 'running' });
 
     const bb = Busboy({ headers: { 'content-type': contentType } });
-    const nodeStream = Readable.fromWeb(req.body as any);
     const tmpRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'npm-publish-'));
     const files: Array<{ name: string; tmpPath: string; index: number }> = [];
     const saves: Promise<void>[] = [];
@@ -76,21 +74,45 @@ export async function POST(req: NextRequest) {
             fileStream.on('error', reject);
             ws.on('error', reject);
             fileStream.pipe(ws);
-            saves.push(new Promise<void>((res, rej) => {
+            const save = new Promise<void>((res, rej) => {
                 ws.on('finish', res);
                 ws.on('error', rej);
                 fileStream.on('error', rej);
-            }));
+            });
+            // 中断・切断時の未処理 rejection を防ぐ（正常系は Promise.all(saves) で検知）。
+            save.catch(() => {});
+            saves.push(save);
         });
         bb.on('error', reject);
-        bb.on('finish', resolve);
+        bb.on('close', resolve);
     });
 
+    // Web ReadableStream(req.body) を busboy へ手動で流し込む。Readable.fromWeb().pipe()
+    // ではストリーム終端の伝播が不安定で busboy が "Unexpected end of form" を投げる
+    // ことがあるため、最後まで読み切ってから明示的に bb.end() する。
+    const pump = (async () => {
+        const reader = (req.body as ReadableStream<Uint8Array>).getReader();
+        try {
+            for (;;) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                if (value && value.byteLength) {
+                    if (!bb.write(Buffer.from(value))) {
+                        await new Promise<void>((res) => bb.once('drain', res));
+                    }
+                }
+            }
+            bb.end();
+        } catch (err) {
+            bb.destroy(err as Error);
+            throw err;
+        }
+    })();
+
     bus.emitEvent({ type: 'stage', stage: 'upload-receive-start' });
-    nodeStream.pipe(bb);
 
     try {
-        await finished;
+        await Promise.all([finished, pump]);
         await Promise.all(saves);
         if (files.length === 0) {
             jobStore.set(jobId, { status: 'error', error: 'no files' });

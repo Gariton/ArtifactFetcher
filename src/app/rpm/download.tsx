@@ -1,13 +1,13 @@
 'use client';
 
 import { ProgressEvent, type RpmPackage } from '@/lib/progressBus';
-import { Button, ScrollArea, Stack, Text, TextInput, PasswordInput, Group } from '@mantine/core';
+import { Button, ScrollArea, Stack, Text } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { IconAlertCircle, IconBox, IconDownload } from '@tabler/icons-react';
+import { IconAlertCircle, IconBox, IconDownload, IconUser, IconKey } from '@tabler/icons-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ProgressBanner, ProgressModal, type ProgressItem } from '@/components/ProgressModal';
-import { CarbonForm, CarbonSection, CarbonField, CarbonTextarea, CarbonCheckbox, CarbonFooter, CarbonSubmit, carbonClasses } from '@/components/CarbonForm';
+import { CarbonForm, CarbonSection, CarbonField, CarbonTextarea, CarbonCheckbox, CarbonPassword, CarbonFooter, CarbonSubmit, carbonClasses } from '@/components/CarbonForm';
 
 const repoOptions = [
     { value: 'centos-stream-9-baseos', label: 'CentOS Stream 9 BaseOS (official)' },
@@ -264,28 +264,26 @@ export function DownloadPane() {
                             desc="1行1件。URL のみ、または id|label|url 形式で入力"
                             error={form.errors.customRepositories as string | undefined}
                         />
-                        <Group grow align="flex-start">
-                            <TextInput
-                                label="ユーザー名 (任意)"
-                                description="プライベートなカスタムリポジトリの認証用"
-                                size="lg"
-                                radius="lg"
-                                placeholder="username"
-                                key={form.key('username')}
-                                {...form.getInputProps('username')}
-                                disabled={loading}
-                            />
-                            <PasswordInput
-                                label="パスワード / トークン (任意)"
-                                description="カスタムリポジトリにのみ適用されます"
-                                size="lg"
-                                radius="lg"
-                                placeholder="password / token"
-                                key={form.key('password')}
-                                {...form.getInputProps('password')}
-                                disabled={loading}
-                            />
-                        </Group>
+                        <CarbonField
+                            label="ユーザー名"
+                            optional
+                            small
+                            icon={IconUser}
+                            value={fv.username}
+                            onChange={(val) => form.setFieldValue('username', val)}
+                            placeholder="username"
+                            disabled={loading}
+                            desc="プライベートなカスタムリポジトリの認証用"
+                        />
+                        <CarbonPassword
+                            label="パスワード / トークン"
+                            optional
+                            icon={IconKey}
+                            value={fv.password}
+                            onChange={(val) => form.setFieldValue('password', val)}
+                            placeholder="password / token"
+                            disabled={loading}
+                        />
                     </CarbonSection>
                 </div>
 

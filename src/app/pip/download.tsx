@@ -1,13 +1,13 @@
 'use client';
 
 import { ProgressEvent, type PipPackage } from '@/lib/progressBus';
-import { Button, Group, Text, TextInput, PasswordInput } from '@mantine/core';
+import { Button, Text } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { IconAlertCircle, IconBox, IconDownload, IconWorld } from '@tabler/icons-react';
+import { IconAlertCircle, IconBox, IconDownload, IconWorld, IconUser, IconKey } from '@tabler/icons-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ProgressBanner, ProgressModal, type ProgressItem } from '@/components/ProgressModal';
-import { CarbonForm, CarbonSection, CarbonField, CarbonTextarea, CarbonAuthPanel, CarbonFooter, CarbonSubmit, CarbonGhostButton, carbonClasses } from '@/components/CarbonForm';
+import { CarbonForm, CarbonSection, CarbonField, CarbonTextarea, CarbonAuthPanel, CarbonFooter, CarbonSubmit, CarbonGhostButton, CarbonPassword, carbonClasses } from '@/components/CarbonForm';
 
 type Status = 'idle' | 'starting' | 'running' | 'done' | 'error';
 
@@ -360,28 +360,26 @@ export function DownloadPane() {
                         disabled={loading}
                         desc="自己署名証明書で TLS 検証をスキップする場合に指定"
                     />
-                    <Group grow align="flex-start">
-                        <TextInput
-                            label="ユーザー名 (任意)"
-                            description="プライベートな Index URL の認証用"
-                            size="lg"
-                            radius="lg"
-                            placeholder="username"
-                            key={form.key('username')}
-                            {...form.getInputProps('username')}
-                            disabled={loading}
-                        />
-                        <PasswordInput
-                            label="パスワード / トークン (任意)"
-                            description="ユーザー名なしの場合は __token__ として扱います"
-                            size="lg"
-                            radius="lg"
-                            placeholder="password / token"
-                            key={form.key('password')}
-                            {...form.getInputProps('password')}
-                            disabled={loading}
-                        />
-                    </Group>
+                    <CarbonField
+                        label="ユーザー名"
+                        optional
+                        small
+                        icon={IconUser}
+                        value={form.getValues().username}
+                        onChange={(val) => form.setFieldValue('username', val)}
+                        placeholder="username"
+                        disabled={loading}
+                        desc="プライベートな Index URL の認証用"
+                    />
+                    <CarbonPassword
+                        label="パスワード / トークン"
+                        optional
+                        icon={IconKey}
+                        value={form.getValues().password}
+                        onChange={(val) => form.setFieldValue('password', val)}
+                        placeholder="password / token"
+                        disabled={loading}
+                    />
                 </CarbonAuthPanel>
 
                 <CarbonSection label="取得対象">

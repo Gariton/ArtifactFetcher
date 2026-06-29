@@ -2,7 +2,7 @@
 
 import { PipPackageCard } from '@/components/PipPackageCard';
 import { ProgressEvent, type PipPackage } from '@/lib/progressBus';
-import { Alert, Badge, Button, Center, Group, Loader, Modal, Progress, ScrollArea, Space, Stack, Text, Textarea, TextInput } from '@mantine/core';
+import { Alert, Badge, Button, Center, Group, Loader, Modal, Progress, ScrollArea, Space, Stack, Text, Textarea, TextInput, PasswordInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { IconCircleCheck, IconDownload, IconStackFront } from '@tabler/icons-react';
@@ -23,6 +23,8 @@ type FormValues = {
     indexUrl: string;
     extraIndexUrls: string;
     trustedHosts: string;
+    username: string;
+    password: string;
 };
 
 function PipDownloadModal({ opened, onClose, jobId, status, packages, perPackage }: {
@@ -171,6 +173,8 @@ export function DownloadPane() {
             indexUrl: '',
             extraIndexUrls: '',
             trustedHosts: '',
+            username: '',
+            password: '',
         },
         validate: {
             packages: (value, values) => {
@@ -319,6 +323,8 @@ export function DownloadPane() {
             .map((s) => s.trim())
             .filter(Boolean);
         if (trustedHosts.length) payload.trustedHosts = trustedHosts;
+        if (values.username.trim()) payload.username = values.username.trim();
+        if (values.password) payload.password = values.password;
 
         try {
             const res = await fetch('/api/pip/start', {
@@ -409,6 +415,29 @@ export function DownloadPane() {
                             placeholder="https://pypi.org/simple"
                             key={form.key('indexUrl')}
                             {...form.getInputProps('indexUrl')}
+                            disabled={loading}
+                        />
+                    </Group>
+
+                    <Group grow align="flex-start">
+                        <TextInput
+                            label="ユーザー名 (任意)"
+                            description="プライベートな Index URL の認証用"
+                            size="lg"
+                            radius="lg"
+                            placeholder="username"
+                            key={form.key('username')}
+                            {...form.getInputProps('username')}
+                            disabled={loading}
+                        />
+                        <PasswordInput
+                            label="パスワード / トークン (任意)"
+                            description="ユーザー名なしの場合は __token__ として扱います"
+                            size="lg"
+                            radius="lg"
+                            placeholder="password / token"
+                            key={form.key('password')}
+                            {...form.getInputProps('password')}
                             disabled={loading}
                         />
                     </Group>

@@ -11,6 +11,20 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
+// index URL に Basic 認証情報を埋め込む（pip は URL 内の userinfo を認証に使う）。
+// ユーザー名が無くトークンのみの場合は PyPI 慣習に倣い __token__ を使う。
+function injectCredentials(rawUrl: string, username?: string, password?: string): string {
+    if (!username && !password) return rawUrl;
+    try {
+        const u = new URL(rawUrl);
+        u.username = username || (password ? '__token__' : '');
+        u.password = password || '';
+        return u.toString();
+    } catch {
+        return rawUrl;
+    }
+}
+
 export async function POST(req: NextRequest) {
     const body = await req.json();
     const packages = Array.isArray(body.packages) ? (body.packages as string[]).map((s) => String(s).trim()).filter(Boolean) : undefined;
@@ -19,6 +33,8 @@ export async function POST(req: NextRequest) {
     const indexUrl = typeof body.indexUrl === 'string' && body.indexUrl.trim() ? body.indexUrl.trim() : undefined;
     const extraIndexUrls = Array.isArray(body.extraIndexUrls) ? body.extraIndexUrls.map((url: any) => String(url).trim()).filter(Boolean) : [];
     const trustedHosts = Array.isArray(body.trustedHosts) ? body.trustedHosts.map((h: any) => String(h).trim()).filter(Boolean) : [];
+    const username = typeof body.username === 'string' && body.username.trim() ? body.username.trim() : undefined;
+    const password = typeof body.password === 'string' && body.password ? body.password : undefined;
 
     if ((!packages || packages.length === 0) && !requirementsText) {
         return new Response(JSON.stringify({ error: 'packages[] or requirementsText is required' }), { status: 400 });
@@ -37,9 +53,9 @@ export async function POST(req: NextRequest) {
         try {
             jobStore.set(jobId, { status: 'running' });
             const pipArgs: string[] = [];
-            if (indexUrl) pipArgs.push('--index-url', indexUrl);
+            if (indexUrl) pipArgs.push('--index-url', injectCredentials(indexUrl, username, password));
             if (extraIndexUrls.length) {
-                for (const url of extraIndexUrls) pipArgs.push('--extra-index-url', url);
+                for (const url of extraIndexUrls) pipArgs.push('--extra-index-url', injectCredentials(url, username, password));
             }
             if (trustedHosts.length) {
                 for (const host of trustedHosts) pipArgs.push('--trusted-host', host);

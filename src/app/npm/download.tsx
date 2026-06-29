@@ -2,7 +2,7 @@
 
 import { LayerCard } from "@/components/LayerCard";
 import { LockEntry } from "@/lib/progressBus";
-import { Alert, Button, Group, Modal, Progress, Space, Stack, Text, ScrollArea, Center, Loader, Badge, Textarea } from "@mantine/core";
+import { Alert, Button, Group, Modal, Progress, Space, Stack, Text, ScrollArea, Center, Loader, Badge, Textarea, TextInput, PasswordInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useDisclosure } from "@mantine/hooks";
 import { IconCircleCheck, IconDownload, IconStackFront } from "@tabler/icons-react";
@@ -20,7 +20,10 @@ export function DownloadPane () {
     const esRef = useRef<EventSource | null>(null);
     const form = useForm({
         initialValues: {
-            packages: ""
+            packages: "",
+            registry: "",
+            username: "",
+            password: ""
         },
         validate: {
             packages: (v) => v=="" ? "パッケージ名を入力してください" : null
@@ -49,7 +52,10 @@ export function DownloadPane () {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     specs,
-                    bundleName: 'npm-from-specs'
+                    bundleName: 'npm-from-specs',
+                    registry: values.registry.trim() || undefined,
+                    username: values.username.trim() || undefined,
+                    password: values.password || undefined
                 }),
             });
             if (!res.ok) { alert("Failed to start"); return; }
@@ -133,6 +139,38 @@ export function DownloadPane () {
                         minRows={5}
                         autosize
                     />
+                    <TextInput
+                        label="レジストリ URL"
+                        description="プライベートレジストリを使う場合に指定（未指定なら npm 公式）"
+                        size="lg"
+                        radius="lg"
+                        placeholder="https://nexus.example.com/repository/npm-registry/"
+                        key={form.key("registry")}
+                        {...form.getInputProps("registry")}
+                        disabled={loading}
+                    />
+                    <Group grow align="flex-start">
+                        <TextInput
+                            label="ユーザー名"
+                            description="プライベートレジストリの認証用（任意）"
+                            size="lg"
+                            radius="lg"
+                            placeholder="username"
+                            key={form.key("username")}
+                            {...form.getInputProps("username")}
+                            disabled={loading}
+                        />
+                        <PasswordInput
+                            label="パスワード / トークン"
+                            description="ユーザー名なしの場合はトークンとして扱います"
+                            size="lg"
+                            radius="lg"
+                            placeholder="password / token"
+                            key={form.key("password")}
+                            {...form.getInputProps("password")}
+                            disabled={loading}
+                        />
+                    </Group>
                     <Space h="md" />
                     <Button
                         size="lg"

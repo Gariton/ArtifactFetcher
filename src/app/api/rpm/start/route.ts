@@ -42,6 +42,10 @@ export async function POST(req: NextRequest) {
     const bundleName = typeof body.bundleName === 'string' && body.bundleName.trim() ? body.bundleName.trim() : 'rpm-offline';
     const repositoryIds = Array.isArray(body.repositories) ? body.repositories.map((s: any) => String(s).trim()).filter(Boolean) : [];
     const resolveDependencies = body.resolveDependencies !== false;
+    // プライベートリポジトリ用の認証情報（任意）。カスタムリポジトリにのみ付与する
+    // （プリセットは公開ミラーのため資格情報は不要）。
+    const username = typeof body.username === 'string' && body.username.trim() ? body.username.trim() : undefined;
+    const password = typeof body.password === 'string' && body.password ? body.password : undefined;
 
     if (!packages.length) {
         return new Response(JSON.stringify({ error: 'packages[] is required' }), { status: 400 });
@@ -50,7 +54,9 @@ export async function POST(req: NextRequest) {
     let repositories: RpmRepository[];
     try {
         const presetRepos = RPM_REPO_PRESETS.filter((repo) => repositoryIds.includes(repo.id));
-        const customRepos = normalizeCustomRepositories(body.customRepositories);
+        const customRepos = normalizeCustomRepositories(body.customRepositories).map((repo) => (
+            (username || password) ? { ...repo, username, password } : repo
+        ));
         const usedIds = new Set<string>();
         repositories = [...presetRepos, ...customRepos].map((repo) => {
             let nextId = repo.id;

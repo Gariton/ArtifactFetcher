@@ -5,6 +5,27 @@ import path from 'node:path';
 import * as tar from 'tar';
 import { parseLockfile } from './lockParser';
 import { ProgressBus, type LockEntry } from '../progressBus';
+import type { NpmAuth } from './arboristLock';
+
+// tarball ダウンロード用の Authorization ヘッダを組み立てる。
+// username があれば Basic、なければトークン(secret)として Bearer。
+function buildNpmAuthHeader(auth?: NpmAuth): Record<string, string> {
+    if (!auth) return {};
+    const token = auth.token?.trim();
+    const username = auth.username?.trim();
+    const secret = auth.password ?? '';
+    if (username) {
+        return { Authorization: `Basic ${Buffer.from(`${username}:${secret}`).toString('base64')}` };
+    }
+    if (token) return { Authorization: `Bearer ${token}` };
+    if (secret) return { Authorization: `Bearer ${secret}` };
+    return {};
+}
+
+function sameHost(a: string, b: string): boolean {
+    try { return new URL(a).host === new URL(b).host; }
+    catch { return false; }
+}
 
 async function requestWithRetry(config: any, retries = 5, baseDelayMs = 500) {
     let attempt = 0;
@@ -24,17 +45,25 @@ async function requestWithRetry(config: any, retries = 5, baseDelayMs = 500) {
 export async function buildTarFromLock({
     lockText,
     bus,
-    bundleName = 'npm-offline'
+    bundleName = 'npm-offline',
+    registry,
+    auth,
 }: {
     lockText: string;
     bus: ProgressBus;
     bundleName?: string;
+    registry?: string;
+    auth?: NpmAuth;
 }) {
     bus.emitEvent({ type: 'stage', stage: 'parse-lockfile' });
     let entries: LockEntry[] = parseLockfile(lockText);
     entries = entries.filter(e => !!e.resolved);
     bus.emitEvent({ type: 'manifest-resolved', items: entries });
-    
+
+    // レジストリと同一ホストの tarball にのみ認証ヘッダを付与する。
+    // （public な tarball 配信元へ資格情報を漏らさないため）
+    const authHeader = buildNpmAuthHeader(auth);
+
     const workRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'npmdl-'));
     const dir = path.join(workRoot, bundleName);
     await fs.promises.mkdir(path.join(dir, 'npm', 'tarballs'), { recursive: true });
@@ -48,7 +77,8 @@ export async function buildTarFromLock({
         
         bus.emitEvent({ type: 'stage', stage: `download-${i}` });
         
-        const res = await requestWithRetry({ method: 'GET', url, responseType: 'stream' });
+        const headers = (registry && sameHost(url, registry)) ? authHeader : undefined;
+        const res = await requestWithRetry({ method: 'GET', url, responseType: 'stream', headers });
         const total = parseInt(res.headers['content-length'] || '0', 10);
         bus.emitEvent({ type: 'item-start', index: i, digest: `${e.name}@${e.version}`, total: total || undefined });
         

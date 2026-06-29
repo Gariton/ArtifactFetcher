@@ -2,7 +2,7 @@
 
 import { PipPackageCard } from '@/components/PipPackageCard';
 import { ProgressEvent, type RpmPackage } from '@/lib/progressBus';
-import { Alert, Button, Checkbox, Group, Modal, Progress, ScrollArea, Space, Stack, Text, Textarea, TextInput, Badge, Loader, Center } from '@mantine/core';
+import { Alert, Button, Checkbox, Group, Modal, Progress, ScrollArea, Space, Stack, Text, Textarea, TextInput, Badge, Loader, Center, PasswordInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { IconCircleCheck, IconDownload, IconStackFront } from '@tabler/icons-react';
@@ -71,6 +71,8 @@ export function DownloadPane() {
             repositories: repoOptions.map((o) => o.value),
             customRepositories: '',
             resolveDependencies: true,
+            username: '',
+            password: '',
         },
         validate: {
             packages: (v) => (v.trim() ? null : 'rpm package名を入力してください'),
@@ -128,6 +130,8 @@ export function DownloadPane() {
                     repositories: values.repositories,
                     customRepositories: customRepositoriesParsed.repositories,
                     resolveDependencies: values.resolveDependencies,
+                    username: values.username.trim() || undefined,
+                    password: values.password || undefined,
                 }),
             });
             if (!res.ok) throw new Error('start failed');
@@ -199,6 +203,28 @@ export function DownloadPane() {
                         {...form.getInputProps('customRepositories')}
                         disabled={loading}
                     />
+                    <Group grow align="flex-start">
+                        <TextInput
+                            label="ユーザー名 (任意)"
+                            description="プライベートなカスタムリポジトリの認証用"
+                            size="lg"
+                            radius="lg"
+                            placeholder="username"
+                            key={form.key('username')}
+                            {...form.getInputProps('username')}
+                            disabled={loading}
+                        />
+                        <PasswordInput
+                            label="パスワード / トークン (任意)"
+                            description="カスタムリポジトリにのみ適用されます"
+                            size="lg"
+                            radius="lg"
+                            placeholder="password / token"
+                            key={form.key('password')}
+                            {...form.getInputProps('password')}
+                            disabled={loading}
+                        />
+                    </Group>
                     <Checkbox label="依存関係もダウンロード (--resolve --alldeps)" key={form.key('resolveDependencies')} {...form.getInputProps('resolveDependencies', { type: 'checkbox' })} />
                     <Space h="md" />
                     <Button size="lg" radius="lg" type="submit" loading={loading}>Download</Button>

@@ -13,10 +13,15 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
-    const { lockfile, specs, bundleName, registry } = await req.json();
+    const { lockfile, specs, bundleName, registry, username, password, token } = await req.json();
     if (!lockfile && !Array.isArray(specs)) {
         return new Response(JSON.stringify({ error: 'Provide lockfile text or specs[]' }), { status: 400 });
     }
+
+    // プライベートレジストリ用の認証情報（任意）。指定時のみ付与する。
+    const auth = (username || password || token)
+        ? { username: username || undefined, password: password || undefined, token: token || undefined }
+        : undefined;
 
     const detail = Array.isArray(specs)
         ? `npm:start specs=${specs.length}`
@@ -35,14 +40,14 @@ export async function POST(req: NextRequest) {
             jobStore.set(jobId, { status: 'running' });
             let lockText: string;
             if (Array.isArray(specs)) {
-                const { lockText: lt } = await makeLockFromSpecs(specs, bus, registry);
+                const { lockText: lt } = await makeLockFromSpecs(specs, bus, registry, auth);
                 lockText = lt;
             } else {
                 lockText = String(lockfile);
             }
             let workRoot: string | undefined;
             try {
-                const { tarPath, filename, workRoot: tmpRoot } = await buildTarFromLock({ lockText, bus, bundleName: bundleName || 'npm-offline' });
+                const { tarPath, filename, workRoot: tmpRoot } = await buildTarFromLock({ lockText, bus, bundleName: bundleName || 'npm-offline', registry, auth });
                 workRoot = tmpRoot;
                 const objectKey = `${jobId}/${filename}`;
                 bus.emitEvent({ type: 'stage', stage: 'uploading-s3' });

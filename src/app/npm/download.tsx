@@ -1,7 +1,7 @@
 'use client';
 
 import { LockEntry } from "@/lib/progressBus";
-import { Button, Text } from "@mantine/core";
+import { Alert, Button, Group, Modal, Progress, Space, Stack, Text, ScrollArea, Center, Loader, Badge, Textarea, TextInput, PasswordInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useDisclosure } from "@mantine/hooks";
 import { IconAlertCircle, IconDownload } from "@tabler/icons-react";
@@ -22,7 +22,10 @@ export function DownloadPane () {
     const form = useForm({
         mode: "controlled",
         initialValues: {
-            packages: ""
+            packages: "",
+            registry: "",
+            username: "",
+            password: ""
         },
         validate: {
             packages: (v) => v=="" ? "パッケージ名を入力してください" : null
@@ -51,7 +54,10 @@ export function DownloadPane () {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     specs,
-                    bundleName: 'npm-from-specs'
+                    bundleName: 'npm-from-specs',
+                    registry: values.registry.trim() || undefined,
+                    username: values.username.trim() || undefined,
+                    password: values.password || undefined
                 }),
             });
             if (!res.ok) { alert("Failed to start"); return; }
@@ -135,12 +141,49 @@ export function DownloadPane () {
                         desc="ダウンロードしたいパッケージ名をスペースまたは改行で区切って入力"
                         error={form.errors.packages as string | undefined}
                     />
-                </CarbonSection>
-                <CarbonFooter hint="依存を全解決して tar 化します">
-                    {jobId && <CarbonGhostButton onClick={open}>進捗を表示</CarbonGhostButton>}
-                    <CarbonSubmit loading={loading}>取得を開始</CarbonSubmit>
-                </CarbonFooter>
-            </CarbonForm>
+                    <TextInput
+                        label="レジストリ URL"
+                        description="プライベートレジストリを使う場合に指定（未指定なら npm 公式）"
+                        size="lg"
+                        radius="lg"
+                        placeholder="https://nexus.example.com/repository/npm-registry/"
+                        key={form.key("registry")}
+                        {...form.getInputProps("registry")}
+                        disabled={loading}
+                    />
+                    <Group grow align="flex-start">
+                        <TextInput
+                            label="ユーザー名"
+                            description="プライベートレジストリの認証用（任意）"
+                            size="lg"
+                            radius="lg"
+                            placeholder="username"
+                            key={form.key("username")}
+                            {...form.getInputProps("username")}
+                            disabled={loading}
+                        />
+                        <PasswordInput
+                            label="パスワード / トークン"
+                            description="ユーザー名なしの場合はトークンとして扱います"
+                            size="lg"
+                            radius="lg"
+                            placeholder="password / token"
+                            key={form.key("password")}
+                            {...form.getInputProps("password")}
+                            disabled={loading}
+                        />
+                    </Group>
+                    <Space h="md" />
+                    <Button
+                        size="lg"
+                        radius="lg"
+                        type="submit"
+                        loading={loading}
+                    >
+                        Download
+                    </Button>
+                </Stack>
+            </form>
 
             {error && (
                 <div className={carbonClasses.errorText} style={{ marginTop: 16 }}>

@@ -1,7 +1,7 @@
 'use client';
 
 import { ProgressEvent, type PipPackage } from '@/lib/progressBus';
-import { Button, Text } from '@mantine/core';
+import { Alert, Badge, Button, Center, Group, Loader, Modal, Progress, ScrollArea, Space, Stack, Text, Textarea, TextInput, PasswordInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { IconAlertCircle, IconBox, IconDownload, IconWorld } from '@tabler/icons-react';
@@ -24,6 +24,8 @@ type FormValues = {
     indexUrl: string;
     extraIndexUrls: string;
     trustedHosts: string;
+    username: string;
+    password: string;
 };
 
 function PipDownloadModal({ opened, onClose, jobId, status, packages, perPackage }: {
@@ -124,6 +126,8 @@ export function DownloadPane() {
             indexUrl: '',
             extraIndexUrls: '',
             trustedHosts: '',
+            username: '',
+            password: '',
         },
         validate: {
             packages: (value, values) => {
@@ -272,6 +276,8 @@ export function DownloadPane() {
             .map((s) => s.trim())
             .filter(Boolean);
         if (trustedHosts.length) payload.trustedHosts = trustedHosts;
+        if (values.username.trim()) payload.username = values.username.trim();
+        if (values.password) payload.password = values.password;
 
         try {
             const res = await fetch('/api/pip/start', {
@@ -343,14 +349,62 @@ export function DownloadPane() {
                         disabled={loading}
                         desc="複数指定する場合は改行またはカンマ区切り"
                     />
-                    <CarbonTextarea
-                        label="Trusted Hosts"
-                        optional
-                        small
-                        value={form.getValues().trustedHosts}
-                        onChange={(val) => form.setFieldValue('trustedHosts', val)}
-                        placeholder="nexus.example.com"
-                        rows={2}
+                    <Group grow>
+                        <TextInput
+                            label="バンドル名"
+                            description="出力tarファイル名のベースになります"
+                            size="lg"
+                            radius="lg"
+                            placeholder="pip-offline"
+                            key={form.key('bundleName')}
+                            {...form.getInputProps('bundleName')}
+                            disabled={loading}
+                        />
+                        <TextInput
+                            label="Index URL (任意)"
+                            description="社内PyPIなどを利用する場合に指定"
+                            size="lg"
+                            radius="lg"
+                            placeholder="https://pypi.org/simple"
+                            key={form.key('indexUrl')}
+                            {...form.getInputProps('indexUrl')}
+                            disabled={loading}
+                        />
+                    </Group>
+
+                    <Group grow align="flex-start">
+                        <TextInput
+                            label="ユーザー名 (任意)"
+                            description="プライベートな Index URL の認証用"
+                            size="lg"
+                            radius="lg"
+                            placeholder="username"
+                            key={form.key('username')}
+                            {...form.getInputProps('username')}
+                            disabled={loading}
+                        />
+                        <PasswordInput
+                            label="パスワード / トークン (任意)"
+                            description="ユーザー名なしの場合は __token__ として扱います"
+                            size="lg"
+                            radius="lg"
+                            placeholder="password / token"
+                            key={form.key('password')}
+                            {...form.getInputProps('password')}
+                            disabled={loading}
+                        />
+                    </Group>
+
+                    <Textarea
+                        label="Extra Index URLs (任意)"
+                        description="複数指定する場合は改行またはカンマ区切りで入力"
+                        size="lg"
+                        radius="lg"
+                        placeholder={`https://internal.example.com/simple\nhttps://another.example.com/simple`}
+                        key={form.key('extraIndexUrls')}
+                        {...form.getInputProps('extraIndexUrls')}
+                        minRows={3}
+                        autosize
                         disabled={loading}
                         desc="自己署名証明書で TLS 検証をスキップする場合に指定"
                     />

@@ -1,7 +1,7 @@
 'use client';
 
 import { ProgressEvent, type RpmPackage } from '@/lib/progressBus';
-import { Button, ScrollArea, Stack, Text } from '@mantine/core';
+import { Alert, Button, Checkbox, Group, Modal, Progress, ScrollArea, Space, Stack, Text, Textarea, TextInput, Badge, Loader, Center, PasswordInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { IconAlertCircle, IconBox, IconDownload } from '@tabler/icons-react';
@@ -73,6 +73,8 @@ export function DownloadPane() {
             repositories: repoOptions.map((o) => o.value),
             customRepositories: '',
             resolveDependencies: true,
+            username: '',
+            password: '',
         },
         validate: {
             packages: (v) => (v.trim() ? null : 'rpm package名を入力してください'),
@@ -130,6 +132,8 @@ export function DownloadPane() {
                     repositories: values.repositories,
                     customRepositories: customRepositoriesParsed.repositories,
                     resolveDependencies: values.resolveDependencies,
+                    username: values.username.trim() || undefined,
+                    password: values.password || undefined,
                 }),
             });
             if (!res.ok) throw new Error('start failed');
@@ -218,35 +222,44 @@ export function DownloadPane() {
                         desc="rpm 名をスペースまたは改行区切りで入力"
                         error={form.errors.packages as string | undefined}
                     />
-                    <CarbonField
-                        label="Bundle name"
-                        optional
-                        icon={IconBox}
-                        value={fv.bundleName}
-                        onChange={(val) => form.setFieldValue('bundleName', val)}
-                        placeholder="rpm-offline"
-                        disabled={loading}
-                    />
-                    <CarbonCheckbox
-                        checked={fv.resolveDependencies}
-                        onChange={(c) => form.setFieldValue('resolveDependencies', c)}
-                        label="依存関係もダウンロード (--resolve --alldeps)"
-                        disabled={loading}
-                    />
-                </CarbonSection>
+                    <Group grow align="flex-start">
+                        <TextInput
+                            label="ユーザー名 (任意)"
+                            description="プライベートなカスタムリポジトリの認証用"
+                            size="lg"
+                            radius="lg"
+                            placeholder="username"
+                            key={form.key('username')}
+                            {...form.getInputProps('username')}
+                            disabled={loading}
+                        />
+                        <PasswordInput
+                            label="パスワード / トークン (任意)"
+                            description="カスタムリポジトリにのみ適用されます"
+                            size="lg"
+                            radius="lg"
+                            placeholder="password / token"
+                            key={form.key('password')}
+                            {...form.getInputProps('password')}
+                            disabled={loading}
+                        />
+                    </Group>
+                    <Checkbox label="依存関係もダウンロード (--resolve --alldeps)" key={form.key('resolveDependencies')} {...form.getInputProps('resolveDependencies', { type: 'checkbox' })} />
+                    <Space h="md" />
+                    <Button size="lg" radius="lg" type="submit" loading={loading}>Download</Button>
+                </Stack>
+            </form>
+            {error && <Alert color="red" radius="lg" title="エラー" my="lg" variant="light">{error}</Alert>}
 
-                <div style={{ borderTop: '1px solid var(--af-border)' }}>
-                    <CarbonSection label="リポジトリ">
-                        <Stack gap={10}>
-                            {repoOptions.map((repo) => (
-                                <CarbonCheckbox
-                                    key={repo.value}
-                                    checked={fv.repositories.includes(repo.value)}
-                                    onChange={() => toggleRepo(repo.value)}
-                                    label={repo.label}
-                                    disabled={loading}
-                                />
-                            ))}
+            <Modal opened={opened} onClose={handleCloseModal} centered radius="lg" size="lg" transitionProps={{ transition: 'pop' }} withCloseButton>
+                <Group justify="space-between"><Group gap="xs"><IconStackFront /><Text fw="bold" size="lg">ダウンロード進捗</Text></Group>{status === 'done' ? <Badge color="green" leftSection={<IconCircleCheck size="1em" />} radius="sm">done</Badge> : <Badge color={status === 'error' ? 'red' : 'gray'} leftSection={status === 'error' ? undefined : <Loader size="1em" color="white" />} radius="sm">{status}</Badge>}</Group>
+                {jobId && <Text size="xs" c="dimmed">jobId: {jobId}</Text>}
+                <Stack gap={10} py="xs"><Group justify="space-between"><Text fw="bold">全体の進捗</Text><Text>{overallPercent}%</Text></Group><Progress value={overallPercent} size="lg" radius="xl" /><Text size="xs" c="dimmed">{(totals.received / 1_000_000).toFixed(2)}MB / {(totals.total / 1_000_000).toFixed(2)}MB</Text></Stack>
+                <Stack gap={8}>
+                    <Text size="sm" fw={600}>現在のステージ: {currentStage}</Text>
+                    <ScrollArea h={150} type="auto" offsetScrollbars>
+                        <Stack gap={2}>
+                            {logs.length === 0 ? <Text size="xs" c="dimmed">ログ待機中...</Text> : logs.map((line, idx) => <Text key={`${line}-${idx}`} size="xs" ff="monospace">{line}</Text>)}
                         </Stack>
                         <CarbonTextarea
                             label="Custom repositories"

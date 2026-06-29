@@ -17,6 +17,8 @@ export type RpmRepository = {
     label: string;
     folderName: string;
     baseUrl: string;
+    username?: string;
+    password?: string;
 };
 
 export const RPM_REPO_PRESETS: RpmRepoPreset[] = [
@@ -213,6 +215,9 @@ export async function buildRpmBundle({ specs, bundleName = 'rpm-offline', reposi
         args.push('--repofrompath', `${repo.id},${repo.baseUrl}`);
         args.push('--setopt', `${repo.id}.gpgcheck=0`);
         args.push('--setopt', `${repo.id}.repo_gpgcheck=0`);
+        // プライベートリポジトリの Basic 認証（dnf のリポジトリオプション）。
+        if (repo.username) args.push('--setopt', `${repo.id}.username=${repo.username}`);
+        if (repo.password) args.push('--setopt', `${repo.id}.password=${repo.password}`);
         args.push('--enablerepo', repo.id);
     }
 

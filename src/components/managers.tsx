@@ -1,5 +1,6 @@
 import {
     IconBrandDocker,
+    IconBrandGitlab,
     IconBrandNpm,
     IconBrandPython,
     IconBox,
@@ -7,7 +8,7 @@ import {
     type TablerIcon,
 } from "@tabler/icons-react";
 
-export type ManagerId = "docker" | "npm" | "pip" | "rpm" | "hf";
+export type ManagerId = "docker" | "npm" | "pip" | "rpm" | "hf" | "gitlab";
 
 export type Manager = {
     id: ManagerId;
@@ -72,6 +73,16 @@ export const MANAGERS: Manager[] = [
         Icon: IconBrain,
         blurb: "GGUF 等の必要ファイルだけ選択取得し、Ollama 等で使えるアーカイブに。",
         tags: ["gguf", "select"],
+    },
+    {
+        id: "gitlab",
+        color: "gitlab",
+        label: "GitLab",
+        code: "GIT",
+        href: "/gitlab",
+        Icon: IconBrandGitlab,
+        blurb: "ArtifactFetcher からのみ到達できる GitLab リポジトリを ZIP で取得。",
+        tags: ["repository", "zip"],
     },
 ];
 

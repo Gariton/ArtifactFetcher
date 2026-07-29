@@ -51,7 +51,7 @@ function ManagerCard({ m }: { m: Manager }) {
 export function ManagerCatalog() {
     return (
         <Stack gap="md">
-            <Text className="af-eyebrow">5 つの成果物マネージャ</Text>
+            <Text className="af-eyebrow">{MANAGERS.length} つの成果物マネージャ</Text>
             <SimpleGrid
                 cols={{ base: 1, xs: 2, md: 3 }}
                 spacing="lg"

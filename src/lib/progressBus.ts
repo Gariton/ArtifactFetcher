@@ -45,10 +45,15 @@ export type HfFile = {
     size?: number;
 };
 
+export type GitLabArchive = {
+    name: string;
+    ref: string;
+};
+
 export type ProgressEvent =
     | { type: "stage"; stage: string }
     | { type: "repo-tag-resolved"; items: RepoTag[]} // docker imageのrepoとtagを解決したときに送るやつ
-    | { type: "manifest-resolved"; manifestName?: string; items: Layer[]|LockEntry[]|PipPackage[]|RpmPackage[]|HfFile[] }
+    | { type: "manifest-resolved"; manifestName?: string; items: Layer[]|LockEntry[]|PipPackage[]|RpmPackage[]|HfFile[]|GitLabArchive[] }
     | { type: 'item-start'; index: number; scope?: string; manifestName?: string; digest: string; total?: number }
     | { type: 'item-progress'; index: number; scope?: string; manifestName?: string; received: number; total?: number }
     | { type: 'item-done'; scope?: string; manifestName?: string; index: number }

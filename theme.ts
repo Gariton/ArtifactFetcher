@@ -29,6 +29,7 @@ const npm = accentScale(0.62, 0.20, 25);
 const pip = accentScale(0.64, 0.18, 300);
 const rpm = accentScale(0.82, 0.14, 90);
 const hf = accentScale(0.72, 0.13, 188);
+const gitlab = accentScale(0.68, 0.18, 45);
 
 // ステータス
 const success = accentScale(0.74, 0.15, 150);
@@ -91,6 +92,7 @@ export const theme = createTheme({
         pip,
         rpm,
         hf,
+        gitlab,
         success,
         warning,
     },

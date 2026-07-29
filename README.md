@@ -1,6 +1,6 @@
 # ArtifactFetcher
 
-**Docker イメージ / npm パッケージ / (将来) Hugging Face モデル** を、  
+**Docker イメージ / npm パッケージ / Hugging Face モデル / GitLab リポジトリ** を、
 サーバーサイドで依存関係を解決しながら取得し、  
 SSE で進捗を可視化しつつクライアントからダウンロードできる Web アプリ & CLI です。
 
@@ -8,6 +8,7 @@ SSE で進捗を可視化しつつクライアントからダウンロードで�
 - 進捗通知: `EventEmitter` → Server‑Sent Events (SSE)  
 - Docker: image の **pull → tar 出力**、および **tar から任意 Registry へ push** に対応  
 - npm: **lockfile 準拠**/ もしくは **パッケージ名@semver → 依存解決 → 全 tarball 取得**（SSE 対応）  
+- GitLab: ArtifactFetcher からのみ到達できる GitLab の **Repository Archive API → ZIP 取得**（SSE 対応）
 
 ---
 
@@ -26,6 +27,7 @@ SSE で進捗を可視化しつつクライアントからダウンロードで�
   - [Docker イメージのダウンロード（tar）](#docker-イメージのダウンロードtar)
   - [Docker イメージのアップロード（tar → Registry）](#docker-イメージのアップロードtar--registry)
   - [npm パッケージのダウンロード](#npm-パッケージのダウンロード)
+  - [GitLab リポジトリのダウンロード](#gitlab-リポジトリのダウンロード)
 - [トラブルシュート](#トラブルシュート)
 - [ライセンス](#ライセンス)
 
@@ -108,6 +110,8 @@ docker buildx build \
 | `ADMIN_AUTH_PASSWORD` |  | 管理画面 Basic 認証のパスワード |
 | `JOB_TTL_MS` | `1800000` | 完了/失敗したジョブと進捗バスを破棄するまでの保持時間（ミリ秒） |
 | `JOB_SWEEP_INTERVAL_MS` | `300000` | 期限切れジョブを掃除する間隔（ミリ秒） |
+| `GITLAB_BASE_URL` |  | ArtifactFetcher から接続する GitLab のベース URL（例: `https://gitlab.internal.example`）。GitLab 機能の利用時は必須 |
+| `GITLAB_TOKEN` |  | GitLab の Personal Access Token。UI で入力されたトークンがある場合はそちらを優先 |
 
 > **セキュリティ**: レジストリの認証情報（ユーザー名 / パスワード / トークン）はクエリ文字列ではなく
 > HTTP ヘッダ（`x-registry-username` / `x-registry-password` / `x-registry-token`）で送信され、アクセスログに残りません。
@@ -121,6 +125,8 @@ docker buildx build \
 `.env.production` 例：
 ```dotenv
 DOCKER_UPLOAD=true
+GITLAB_BASE_URL=https://gitlab.internal.example
+GITLAB_TOKEN=glpat-example
 ```
 compose:
 ```yaml
@@ -141,6 +147,7 @@ services:
 3. 完了後、ブラウザが自動で `.tar` をダウンロード  
 4. （オプション）Docker tar を **任意 Registry に push**（UI から複数ファイル一括アップロード可）  
 5. `/admin` からアクセスできる管理ページで、リクエストの履歴（時刻・IP・エンドポイント）を確認可能  
+6. **GitLab** では `group/subgroup/project` と任意の ref を指定し、サーバー経由で `.zip` を取得
 
 ### CLI
 Web サーバに対して CLI からダウンロードを発火できます。
@@ -209,6 +216,18 @@ npm run download -- npm next ^18 --host https://downloader.example.com --out dow
 - 生成済みの npm バンドル (`.tar` / `.tgz`) を複数まとめて選択し、サーバ側で `npm publish <tarball>` を実行して Nexus など任意のレジストリへ公開  
 - UI からレジストリ URL、Auth Token または Basic 認証情報を指定でき、進捗は SSE でモーダル表示  
 - 例: `https://nexus.example.com/repository/npm-hosted` + Auth Token（もしくはユーザー/パスワード）  
+
+### GitLab リポジトリのダウンロード
+- 接続先はサーバー環境変数 `GITLAB_BASE_URL` で固定し、ブラウザから閉域 GitLab へ直接アクセスしない
+- `group/subgroup/project` または数値の Project ID を指定可能
+- ブランチ、タグ、コミット SHA を ref として指定可能。未指定時はデフォルトブランチを取得
+- プライベートプロジェクトは `GITLAB_TOKEN`、または UI で一時的に入力する Personal Access Token に対応
+- GitLab からの ZIP はストリーミングで S3 (MinIO) へ保存し、受信バイト数を SSE で通知
+
+#### API
+- `POST /api/gitlab/start` … `{ project, ref?, token? }` → `{ jobId }`
+- `GET /api/build/progress?jobId=...` … SSE
+- `GET /api/build/download?jobId=...` … `.zip` ダウンロード
 
 ---
 

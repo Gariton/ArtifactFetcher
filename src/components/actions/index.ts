@@ -26,5 +26,8 @@ export async function getEnvironmentVar() {
         RPM_UPLOAD_PASSWORD: process.env.RPM_UPLOAD_PASSWORD ?? "",
         RPM_UPLOAD_TOKEN: process.env.RPM_UPLOAD_TOKEN ?? "",
         RPM_UPLOAD_METHOD: process.env.RPM_UPLOAD_METHOD ?? "put",
+
+        GITLAB_BASE_URL: process.env.GITLAB_BASE_URL ?? "",
+        GITLAB_TOKEN_CONFIGURED: process.env.GITLAB_TOKEN ? "yes" : "no",
     }
 }

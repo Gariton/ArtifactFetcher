@@ -9,6 +9,7 @@
     --af-pip: oklch(0.64 0.18 300);
     --af-rpm: oklch(0.82 0.14 90);
     --af-hf: oklch(0.72 0.13 188);
+    --af-gitlab: oklch(0.68 0.18 45);
 
     /* Status */
     --af-success: oklch(0.74 0.15 150);

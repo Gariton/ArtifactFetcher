@@ -13,10 +13,10 @@ import {
 } from '@/components/CarbonForm';
 import { ProgressBanner, ProgressModal, type ProgressItem } from '@/components/ProgressModal';
 import type { GitLabArchive, ProgressEvent } from '@/lib/progressBus';
-import { Button, Text } from '@mantine/core';
+import { Button, SegmentedControl, Text } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { IconAlertCircle, IconBrandGitlab, IconDownload, IconGitBranch, IconKey } from '@tabler/icons-react';
+import { IconAlertCircle, IconBrandGitlab, IconDownload, IconFile, IconGitBranch, IconKey, IconTag } from '@tabler/icons-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export function DownloadPane() {
@@ -26,16 +26,22 @@ export function DownloadPane() {
     const [configuredToken, setConfiguredToken] = useState(false);
     const [jobId, setJobId] = useState<string | null>(null);
     const [status, setStatus] = useState('idle');
-    const [archive, setArchive] = useState<GitLabArchive | null>(null);
+    const [artifact, setArtifact] = useState<GitLabArchive | null>(null);
     const [received, setReceived] = useState(0);
     const [total, setTotal] = useState<number | undefined>();
     const [opened, { open, close }] = useDisclosure(false);
     const eventSourceRef = useRef<EventSource | null>(null);
     const form = useForm({
         mode: 'controlled',
-        initialValues: { project: '', ref: '', token: '' },
+        initialValues: { target: 'archive', project: '', ref: '', releaseTag: '', assetName: '', token: '' },
         validate: {
             project: (value) => value.trim() ? null : 'プロジェクトIDまたはパスを入力してください',
+            releaseTag: (value, values) => values.target !== 'release-asset' || value.trim()
+                ? null
+                : 'リリースタグを入力してください',
+            assetName: (value, values) => values.target !== 'release-asset' || value.trim()
+                ? null
+                : 'リリースファイル名を入力してください',
         },
     });
 
@@ -51,7 +57,7 @@ export function DownloadPane() {
         eventSourceRef.current = null;
         setJobId(null);
         setStatus('idle');
-        setArchive(null);
+        setArtifact(null);
         setReceived(0);
         setTotal(undefined);
     }, []);
@@ -68,7 +74,10 @@ export function DownloadPane() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     project: values.project.trim(),
+                    target: values.target,
                     ref: values.ref.trim() || undefined,
+                    releaseTag: values.releaseTag.trim() || undefined,
+                    assetName: values.assetName.trim() || undefined,
                     token: values.token || undefined,
                 }),
             });
@@ -81,7 +90,7 @@ export function DownloadPane() {
             eventSourceRef.current = eventSource;
             eventSource.onmessage = (event) => {
                 const data = JSON.parse(event.data) as ProgressEvent;
-                if (data.type === 'manifest-resolved') setArchive((data.items as GitLabArchive[])[0] || null);
+                if (data.type === 'manifest-resolved') setArtifact((data.items as GitLabArchive[])[0] || null);
                 if (data.type === 'item-start') setTotal(data.total);
                 if (data.type === 'item-progress') {
                     setReceived(data.received);
@@ -119,9 +128,10 @@ export function DownloadPane() {
     const percent = total ? Math.min(100, Math.floor((received / total) * 100)) : status === 'done' ? 100 : undefined;
     const sizeMb = (received / 1_000_000).toFixed(1);
     const itemStatus = state === 'error' ? 'error' : state === 'done' ? 'done' : received > 0 ? 'running' : 'waiting';
-    const items: ProgressItem[] = archive ? [{
-        key: archive.name,
-        label: archive.name,
+    const isReleaseAsset = form.getValues().target === 'release-asset';
+    const items: ProgressItem[] = artifact ? [{
+        key: artifact.name,
+        label: artifact.name,
         status: itemStatus,
         percent,
         meta: state === 'done' ? '完了' : total ? `${(total / 1_000_000).toFixed(1)}MB` : '取得中',
@@ -150,6 +160,18 @@ export function DownloadPane() {
                 </CarbonAuthPanel>
 
                 <CarbonSection label="取得対象">
+                    <SegmentedControl
+                        fullWidth
+                        color="gitlab"
+                        value={form.getValues().target}
+                        onChange={(value) => form.setFieldValue('target', value)}
+                        disabled={loading}
+                        data={[
+                            { label: 'リポジトリ ZIP', value: 'archive' },
+                            { label: 'リリースファイル', value: 'release-asset' },
+                        ]}
+                        mb={16}
+                    />
                     <CarbonField
                         label="プロジェクトID / パス"
                         required
@@ -162,22 +184,55 @@ export function DownloadPane() {
                         error={form.errors.project as string | undefined}
                         desc="GitLab上のnamespace付きパス、または数値のProject ID"
                     />
-                    <div style={{ marginTop: 16 }}>
-                        <CarbonField
-                            label="ref"
-                            optional
-                            icon={IconGitBranch}
-                            value={form.getValues().ref}
-                            onChange={(value) => form.setFieldValue('ref', value)}
-                            placeholder="main / v1.2.0 / commit SHA"
-                            disabled={loading}
-                            desc="ブランチ、タグ、コミットSHA。未指定時はデフォルトブランチ"
-                        />
-                    </div>
+                    {isReleaseAsset ? (
+                        <>
+                            <div style={{ marginTop: 16 }}>
+                                <CarbonField
+                                    label="リリースタグ"
+                                    required
+                                    icon={IconTag}
+                                    value={form.getValues().releaseTag}
+                                    onChange={(value) => form.setFieldValue('releaseTag', value)}
+                                    placeholder="v1.2.0"
+                                    disabled={loading}
+                                    error={form.errors.releaseTag as string | undefined}
+                                    desc="GitLab Release のタグ名"
+                                />
+                            </div>
+                            <div style={{ marginTop: 16 }}>
+                                <CarbonField
+                                    label="リリースファイル名"
+                                    required
+                                    icon={IconFile}
+                                    value={form.getValues().assetName}
+                                    onChange={(value) => form.setFieldValue('assetName', value)}
+                                    placeholder="app-linux-amd64.tar.gz"
+                                    disabled={loading}
+                                    error={form.errors.assetName as string | undefined}
+                                    desc="リリースの Assets > Links に表示される名前（完全一致）"
+                                />
+                            </div>
+                        </>
+                    ) : (
+                        <div style={{ marginTop: 16 }}>
+                            <CarbonField
+                                label="ref"
+                                optional
+                                icon={IconGitBranch}
+                                value={form.getValues().ref}
+                                onChange={(value) => form.setFieldValue('ref', value)}
+                                placeholder="main / v1.2.0 / commit SHA"
+                                disabled={loading}
+                                desc="ブランチ、タグ、コミットSHA。未指定時はデフォルトブランチ"
+                            />
+                        </div>
+                    )}
                 </CarbonSection>
 
-                <CarbonFooter hint="GitLab API経由でZIPを取得し、一時ストレージへ保存します">
-                    <CarbonSubmit loading={loading} icon={IconDownload}>ZIPを取得</CarbonSubmit>
+                <CarbonFooter hint="GitLab API経由で取得し、一時ストレージへ保存します">
+                    <CarbonSubmit loading={loading} icon={IconDownload}>
+                        {isReleaseAsset ? 'リリースファイルを取得' : 'ZIPを取得'}
+                    </CarbonSubmit>
                 </CarbonFooter>
             </CarbonForm>
 
@@ -192,16 +247,20 @@ export function DownloadPane() {
                 onClose={handleClose}
                 accent="gitlab"
                 title={state === 'done' ? '取得完了' : state === 'error' ? '取得に失敗' : 'GitLabから取得中'}
-                subtitle={archive ? `${archive.name} @ ${archive.ref}` : 'リポジトリを確認しています…'}
+                subtitle={artifact ? `${artifact.name} @ ${artifact.ref}` : 'GitLabの取得対象を確認しています…'}
                 overallPercent={percent}
                 state={state}
                 stats={[
                     { value: sizeMb, unit: ' MB', label: '取得サイズ' },
-                    { value: archive?.ref || '-', label: 'ref' },
+                    { value: artifact?.ref || '-', label: isReleaseAsset ? 'release' : 'ref' },
                 ]}
                 items={items}
                 banner={state === 'done' ? (
-                    <ProgressBanner tone="success" title="ZIPアーカイブを作成しました" detail={`${sizeMb} MB`} />
+                    <ProgressBanner
+                        tone="success"
+                        title={isReleaseAsset ? 'リリースファイルを取得しました' : 'ZIPアーカイブを作成しました'}
+                        detail={`${sizeMb} MB`}
+                    />
                 ) : state === 'error' ? (
                     <ProgressBanner tone="error" title="取得できませんでした" detail={error || 'GitLabの設定を確認してください'} />
                 ) : undefined}
@@ -217,7 +276,7 @@ export function DownloadPane() {
                             target="_blank"
                             disabled={!jobId}
                         >
-                            ZIPをダウンロード
+                            {isReleaseAsset ? 'ファイルをダウンロード' : 'ZIPをダウンロード'}
                         </Button>
                     </>
                 ) : (

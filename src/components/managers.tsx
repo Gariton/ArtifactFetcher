@@ -81,8 +81,8 @@ export const MANAGERS: Manager[] = [
         code: "GIT",
         href: "/gitlab",
         Icon: IconBrandGitlab,
-        blurb: "ArtifactFetcher からのみ到達できる GitLab リポジトリを ZIP で取得。",
-        tags: ["repository", "zip"],
+        blurb: "GitLab のリポジトリ ZIP やリリースファイルを取得。",
+        tags: ["repository", "release"],
     },
 ];
 

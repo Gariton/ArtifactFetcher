@@ -9,7 +9,7 @@ export default function GitLabPage() {
         <div>
             <PageHeader
                 manager="gitlab"
-                description="ArtifactFetcherのネットワークからGitLab APIへ接続し、リポジトリZIPまたはリリースファイルを取得。"
+                description="ArtifactFetcherのネットワークからGitLab APIへ接続し、リポジトリZIPまたはリリースアセットを取得。"
             />
             <Space h="md" />
             <DownloadPane />

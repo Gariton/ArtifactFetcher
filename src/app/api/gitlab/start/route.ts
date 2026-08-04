@@ -1,7 +1,10 @@
 import { NextRequest } from 'next/server';
 import { nanoid } from 'nanoid';
 import { jobStore } from '@/lib/jobStore';
-import { downloadGitLabArchive, downloadGitLabReleaseAsset } from '@/lib/gitlab/downloader';
+import {
+    downloadGitLabArchive,
+    downloadGitLabReleaseAsset,
+} from '@/lib/gitlab/downloader';
 import { ProgressBus, globalBusMap } from '@/lib/progressBus';
 import { logRequest } from '@/lib/requestLog';
 
@@ -26,15 +29,21 @@ export async function POST(req: NextRequest) {
         return Response.json({ error: 'プロジェクトIDまたはパスを入力してください' }, { status: 400 });
     }
     if (target === 'release-asset' && (!releaseTag || !assetName)) {
-        return Response.json({ error: 'リリースタグとファイル名を入力してください' }, { status: 400 });
+        return Response.json({ error: 'リリースタグとアセットを選択してください' }, { status: 400 });
     }
-    if (project.length > 500 || ref.length > 255 || releaseTag.length > 255 || assetName.length > 500 || requestToken.length > 4096) {
+    if (
+        project.length > 500
+        || ref.length > 255
+        || releaseTag.length > 255
+        || assetName.length > 500
+        || requestToken.length > 4096
+    ) {
         return Response.json({ error: '入力値が長すぎます' }, { status: 400 });
     }
 
     logRequest(req, 'gitlab:start');
     const jobId = nanoid();
-    const objectKey = `${jobId}/${target === 'release-asset' ? 'gitlab-release-asset' : 'gitlab-repository.zip'}`;
+    const objectKey = `${jobId}/${target === 'archive' ? 'gitlab-repository.zip' : 'gitlab-release-asset'}`;
     const bus = new ProgressBus();
     jobStore.set(jobId, { status: 'queued' });
     globalBusMap.set(jobId, bus);

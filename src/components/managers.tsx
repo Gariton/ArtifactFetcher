@@ -81,7 +81,7 @@ export const MANAGERS: Manager[] = [
         code: "GIT",
         href: "/gitlab",
         Icon: IconBrandGitlab,
-        blurb: "GitLab のリポジトリ ZIP やリリースファイルを取得。",
+        blurb: "GitLab のリポジトリ ZIP やリリースアセットを取得。",
         tags: ["repository", "release"],
     },
 ];

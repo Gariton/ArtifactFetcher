@@ -1,7 +1,12 @@
 import axios, { AxiosError, type AxiosResponse } from 'axios';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { PassThrough, Readable, Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import * as tar from 'tar';
 import { ProgressBus } from '@/lib/progressBus';
-import { uploadStreamToS3 } from '@/lib/storage/s3';
+import { uploadFileToS3, uploadStreamToS3 } from '@/lib/storage/s3';
 
 type DownloadGitLabArchiveOptions = {
     baseUrl: string;
@@ -12,11 +17,11 @@ type DownloadGitLabArchiveOptions = {
     bus: ProgressBus;
 };
 
-type DownloadGitLabReleaseAssetOptions = {
+type DownloadGitLabReleaseAssetsOptions = {
     baseUrl: string;
     project: string;
     releaseTag: string;
-    assetName: string;
+    assetNames: string[];
     token?: string;
     objectKey: string;
     bus: ProgressBus;
@@ -131,23 +136,15 @@ function normalizeRelease(release: GitLabReleaseResponse, gitlab: URL): GitLabRe
     };
 }
 
-async function streamToS3({
+async function openDownloadStream({
     url,
     token,
-    objectKey,
-    contentType,
-    itemName,
-    bus,
     allowExternalRedirect = false,
 }: {
     url: URL;
     token?: string;
-    objectKey: string;
-    contentType?: string;
-    itemName: string;
-    bus: ProgressBus;
     allowExternalRedirect?: boolean;
-}): Promise<{ size: number; contentType?: string }> {
+}): Promise<AxiosResponse<Readable>> {
     let currentUrl = url;
     let response: AxiosResponse<Readable> | undefined;
     for (let redirectCount = 0; redirectCount <= 5; redirectCount += 1) {
@@ -178,14 +175,37 @@ async function streamToS3({
     if (!response || response.status < 200 || response.status >= 300) {
         throw new Error('GitLabのダウンロードでリダイレクト回数を超えました');
     }
+    return response;
+}
+
+async function streamToS3({
+    url,
+    token,
+    objectKey,
+    contentType,
+    itemName,
+    bus,
+    allowExternalRedirect = false,
+    index = 0,
+}: {
+    url: URL;
+    token?: string;
+    objectKey: string;
+    contentType?: string;
+    itemName: string;
+    bus: ProgressBus;
+    allowExternalRedirect?: boolean;
+    index?: number;
+}): Promise<{ size: number; contentType?: string }> {
+    const response = await openDownloadStream({ url, token, allowExternalRedirect });
 
     const total = Number.parseInt(response.headers['content-length'] || '', 10) || undefined;
-    bus.emitEvent({ type: 'item-start', index: 0, digest: itemName, total });
+    bus.emitEvent({ type: 'item-start', index, digest: itemName, total });
     let received = 0;
     const progress = new Transform({
         transform(chunk: Buffer, _encoding, callback) {
             received += chunk.length;
-            bus.emitEvent({ type: 'item-progress', index: 0, received, total });
+            bus.emitEvent({ type: 'item-progress', index, received, total });
             callback(null, chunk);
         },
     });
@@ -200,8 +220,45 @@ async function streamToS3({
         key: objectKey,
         contentType: responseContentType || contentType || 'application/octet-stream',
     });
-    bus.emitEvent({ type: 'item-done', index: 0 });
+    bus.emitEvent({ type: 'item-done', index });
     return { size: received, contentType: responseContentType };
+}
+
+async function downloadToFile({
+    url,
+    token,
+    filePath,
+    itemName,
+    index,
+    bus,
+}: {
+    url: URL;
+    token?: string;
+    filePath: string;
+    itemName: string;
+    index: number;
+    bus: ProgressBus;
+}): Promise<number> {
+    try {
+        const response = await openDownloadStream({ url, token, allowExternalRedirect: true });
+        const total = Number.parseInt(response.headers['content-length'] || '', 10) || undefined;
+        bus.emitEvent({ type: 'item-start', index, digest: itemName, total });
+        let received = 0;
+        const progress = new Transform({
+            transform(chunk: Buffer, _encoding, callback) {
+                received += chunk.length;
+                bus.emitEvent({ type: 'item-progress', index, received, total });
+                callback(null, chunk);
+            },
+        });
+        await pipeline(response.data, progress, fs.createWriteStream(filePath));
+        bus.emitEvent({ type: 'item-done', index });
+        return received;
+    } catch (error) {
+        const message = error instanceof Error ? error.message : `アセット「${itemName}」の取得に失敗しました`;
+        bus.emitEvent({ type: 'item-error', index, message });
+        throw error;
+    }
 }
 
 export async function listGitLabReleases({
@@ -270,26 +327,28 @@ export async function downloadGitLabArchive({
     }
 }
 
-export async function downloadGitLabReleaseAsset({
+export async function downloadGitLabReleaseAssets({
     baseUrl,
     project,
     releaseTag,
-    assetName,
+    assetNames,
     token,
     objectKey,
     bus,
-}: DownloadGitLabReleaseAssetOptions): Promise<{ filename: string; size: number }> {
+}: DownloadGitLabReleaseAssetsOptions): Promise<{ filename: string; size: number }> {
     const gitlab = normalizeBaseUrl(baseUrl);
     const normalizedProject = normalizeProject(project);
     const normalizedTag = releaseTag.trim();
-    const normalizedAssetName = assetName.trim();
+    const normalizedAssetNames = [...new Set(assetNames.map((name) => name.trim()).filter(Boolean))];
     if (!normalizedTag) throw new Error('リリースタグを選択してください');
-    if (!normalizedAssetName) throw new Error('リリースアセットを選択してください');
+    if (!normalizedAssetNames.length) throw new Error('リリースアセットを選択してください');
+    if (normalizedAssetNames.length > 50) throw new Error('一度に選択できるリリースアセットは50件までです');
 
     const releaseUrl = apiUrl(
         gitlab,
         `projects/${encodeURIComponent(normalizedProject)}/releases/${encodeURIComponent(normalizedTag)}`,
     );
+    let workRoot: string | undefined;
     try {
         bus.emitEvent({ type: 'stage', stage: 'resolving-gitlab-release' });
         const response = await axios.get<GitLabReleaseResponse>(releaseUrl.toString(), {
@@ -299,35 +358,77 @@ export async function downloadGitLabReleaseAsset({
             validateStatus: (status) => status >= 200 && status < 300,
         });
         const release = normalizeRelease(response.data, gitlab);
-        const asset = release?.assets.find((item) => item.name === normalizedAssetName);
-        if (!asset) {
-            const available = release?.assets.map((item) => item.name).slice(0, 10) || [];
-            const suffix = available.length ? `（利用可能: ${available.join(', ')}）` : '';
-            throw new Error(`リリースアセット「${normalizedAssetName}」が見つかりません${suffix}`);
-        }
+        const selectedAssets = normalizedAssetNames.map((assetName) => {
+            const asset = release?.assets.find((item) => item.name === assetName);
+            if (!asset) throw new Error(`リリースアセット「${assetName}」が見つかりません`);
+            return asset;
+        });
 
-        const assetUrl = new URL(asset.directAssetUrl);
-        const filename = safeFilenamePart(asset.fileName);
         bus.emitEvent({
             type: 'manifest-resolved',
-            items: [{
+            items: selectedAssets.map((asset) => ({
                 name: asset.fileName,
                 ref: release?.tagName || normalizedTag,
-                kind: 'release-asset',
+                kind: 'release-asset' as const,
                 project: normalizedProject,
-            }],
+            })),
         });
-        bus.emitEvent({ type: 'stage', stage: 'downloading-gitlab-release-asset' });
-        const { size } = await streamToS3({
-            url: assetUrl,
-            token,
-            objectKey,
-            itemName: asset.fileName,
-            bus,
-            allowExternalRedirect: true,
-        });
-        return { filename, size };
+        bus.emitEvent({ type: 'stage', stage: 'downloading-gitlab-release-assets' });
+
+        if (selectedAssets.length === 1) {
+            const asset = selectedAssets[0];
+            const { size } = await streamToS3({
+                url: new URL(asset.directAssetUrl),
+                token,
+                objectKey,
+                itemName: asset.fileName,
+                bus,
+                allowExternalRedirect: true,
+            });
+            return { filename: safeFilenamePart(asset.fileName), size };
+        }
+
+        const bundleName = `${safeFilenamePart(normalizedProject.replaceAll('/', '-'))}-${safeFilenamePart(normalizedTag)}-assets`;
+        workRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'gitlab-release-'));
+        const bundleRoot = path.join(workRoot, bundleName);
+        await fs.promises.mkdir(bundleRoot, { recursive: true });
+
+        const usedNames = new Set<string>();
+        let totalSize = 0;
+        for (let index = 0; index < selectedAssets.length; index += 1) {
+            const asset = selectedAssets[index];
+            const originalName = safeFilenamePart(asset.fileName);
+            const extension = path.extname(originalName);
+            const baseName = extension ? originalName.slice(0, -extension.length) : originalName;
+            let archiveName = originalName;
+            let suffix = 2;
+            while (usedNames.has(archiveName)) {
+                archiveName = `${baseName}-${suffix}${extension}`;
+                suffix += 1;
+            }
+            usedNames.add(archiveName);
+            totalSize += await downloadToFile({
+                url: new URL(asset.directAssetUrl),
+                token,
+                filePath: path.join(bundleRoot, archiveName),
+                itemName: asset.fileName,
+                index,
+                bus,
+            });
+        }
+
+        bus.emitEvent({ type: 'tar-writing' });
+        const filename = `${bundleName}.tar`;
+        const tarPath = path.join(workRoot, filename);
+        await tar.c({ cwd: bundleRoot, file: tarPath, sync: true }, ['.']);
+        bus.emitEvent({ type: 'stage', stage: 'uploading-s3' });
+        await uploadFileToS3({ filePath: tarPath, key: objectKey, contentType: 'application/x-tar' });
+        return { filename, size: totalSize };
     } catch (error) {
         throw gitLabError(error);
+    } finally {
+        if (workRoot) {
+            try { await fs.promises.rm(workRoot, { recursive: true, force: true }); } catch {}
+        }
     }
 }

@@ -221,13 +221,14 @@ npm run download -- npm next ^18 --host https://downloader.example.com --out dow
 - 接続先はサーバー環境変数 `GITLAB_BASE_URL` で固定し、ブラウザから閉域 GitLab へ直接アクセスしない
 - `group/subgroup/project` または数値の Project ID を指定可能
 - ブランチ、タグ、コミット SHA を ref として指定可能。未指定時はデフォルトブランチを取得
-- プロジェクトを指定してリリースタグ候補を取得し、`direct_asset_path` が設定されたアセットファイル候補から選択可能
+- プロジェクトを指定してリリースタグ候補を取得し、`direct_asset_path` が設定されたアセットファイル候補から複数選択可能
+- 1ファイル選択時は元ファイルをそのまま返し、複数選択時は1つの `.tar` にまとめてダウンロード
 - プライベートプロジェクトは `GITLAB_TOKEN`、または UI で一時的に入力する Personal Access Token に対応
 - GitLab からのファイルはストリーミングで S3 (MinIO) へ保存し、受信バイト数を SSE で通知
 
 #### API
 - `POST /api/gitlab/releases` … `{ project, token? }` → リリースタグとアセットファイル候補
-- `POST /api/gitlab/start` … ZIP: `{ project, target: "archive", ref?, token? }` / リリースアセット: `{ project, target: "release-asset", releaseTag, assetName, token? }` → `{ jobId }`
+- `POST /api/gitlab/start` … ZIP: `{ project, target: "archive", ref?, token? }` / リリースアセット: `{ project, target: "release-asset", releaseTag, assetNames: string[], token? }` → `{ jobId }`
 - `GET /api/build/progress?jobId=...` … SSE
 - `GET /api/build/download?jobId=...` … ZIPまたはリリースアセットをダウンロード
 

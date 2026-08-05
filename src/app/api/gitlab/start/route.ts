@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid';
 import { jobStore } from '@/lib/jobStore';
 import {
     downloadGitLabArchive,
-    downloadGitLabReleaseAsset,
+    downloadGitLabReleaseAssets,
 } from '@/lib/gitlab/downloader';
 import { ProgressBus, globalBusMap } from '@/lib/progressBus';
 import { logRequest } from '@/lib/requestLog';
@@ -18,7 +18,11 @@ export async function POST(req: NextRequest) {
     const ref = typeof body?.ref === 'string' ? body.ref.trim() : '';
     const target = body?.target === 'release-asset' ? 'release-asset' : 'archive';
     const releaseTag = typeof body?.releaseTag === 'string' ? body.releaseTag.trim() : '';
-    const assetName = typeof body?.assetName === 'string' ? body.assetName.trim() : '';
+    const assetNames: string[] = Array.isArray(body?.assetNames)
+        ? body.assetNames.filter((name: unknown): name is string => typeof name === 'string').map((name: string) => name.trim()).filter(Boolean)
+        : typeof body?.assetName === 'string' && body.assetName.trim()
+            ? [body.assetName.trim()]
+            : [];
     const requestToken = typeof body?.token === 'string' ? body.token.trim() : '';
     const baseUrl = process.env.GITLAB_BASE_URL?.trim() || '';
 
@@ -28,14 +32,15 @@ export async function POST(req: NextRequest) {
     if (!project) {
         return Response.json({ error: 'プロジェクトIDまたはパスを入力してください' }, { status: 400 });
     }
-    if (target === 'release-asset' && (!releaseTag || !assetName)) {
+    if (target === 'release-asset' && (!releaseTag || !assetNames.length)) {
         return Response.json({ error: 'リリースタグとアセットを選択してください' }, { status: 400 });
     }
+    if (assetNames.length > 50) return Response.json({ error: '一度に選択できるアセットは50件までです' }, { status: 400 });
     if (
         project.length > 500
         || ref.length > 255
         || releaseTag.length > 255
-        || assetName.length > 500
+        || assetNames.some((name) => name.length > 500)
         || requestToken.length > 4096
     ) {
         return Response.json({ error: '入力値が長すぎます' }, { status: 400 });
@@ -43,7 +48,11 @@ export async function POST(req: NextRequest) {
 
     logRequest(req, 'gitlab:start');
     const jobId = nanoid();
-    const objectKey = `${jobId}/${target === 'archive' ? 'gitlab-repository.zip' : 'gitlab-release-asset'}`;
+    const objectKey = `${jobId}/${target === 'archive'
+        ? 'gitlab-repository.zip'
+        : assetNames.length > 1
+            ? 'gitlab-release-assets.tar'
+            : 'gitlab-release-asset'}`;
     const bus = new ProgressBus();
     jobStore.set(jobId, { status: 'queued' });
     globalBusMap.set(jobId, bus);
@@ -60,7 +69,7 @@ export async function POST(req: NextRequest) {
                 bus,
             };
             const { filename } = target === 'release-asset'
-                ? await downloadGitLabReleaseAsset({ ...common, releaseTag, assetName })
+                ? await downloadGitLabReleaseAssets({ ...common, releaseTag, assetNames })
                 : await downloadGitLabArchive({ ...common, ref: ref || undefined });
             jobStore.set(jobId, { status: 'done', filename, objectKey });
             bus.emitEvent({ type: 'done', filename });

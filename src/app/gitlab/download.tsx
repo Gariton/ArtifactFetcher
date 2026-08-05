@@ -14,7 +14,7 @@ import {
 import { ProgressBanner, ProgressModal, type ProgressItem } from '@/components/ProgressModal';
 import type { GitLabArchive, ProgressEvent } from '@/lib/progressBus';
 import type { GitLabReleaseOption } from '@/lib/gitlab/downloader';
-import { Button, Select, SegmentedControl, Text } from '@mantine/core';
+import { Button, MultiSelect, Select, SegmentedControl, Text } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import {
@@ -40,9 +40,13 @@ export function DownloadPane() {
     const [jobId, setJobId] = useState<string | null>(null);
     const [jobTarget, setJobTarget] = useState('archive');
     const [status, setStatus] = useState('idle');
-    const [artifact, setArtifact] = useState<GitLabArchive | null>(null);
-    const [received, setReceived] = useState(0);
-    const [total, setTotal] = useState<number | undefined>();
+    const [artifacts, setArtifacts] = useState<GitLabArchive[]>([]);
+    const [itemProgress, setItemProgress] = useState<Record<number, {
+        received: number;
+        total?: number;
+        status: 'waiting' | 'running' | 'done' | 'error';
+        error?: string;
+    }>>({});
     const [opened, { open, close }] = useDisclosure(false);
     const eventSourceRef = useRef<EventSource | null>(null);
     const form = useForm({
@@ -52,7 +56,7 @@ export function DownloadPane() {
             project: '',
             ref: '',
             releaseTag: '',
-            assetName: '',
+            assetNames: [] as string[],
             token: '',
         },
         validate: {
@@ -60,7 +64,7 @@ export function DownloadPane() {
             releaseTag: (value, values) => values.target !== 'release-asset' || value.trim()
                 ? null
                 : 'リリースタグを選択してください',
-            assetName: (value, values) => values.target !== 'release-asset' || value.trim()
+            assetNames: (value, values) => values.target !== 'release-asset' || value.length > 0
                 ? null
                 : 'リリースアセットを選択してください',
         },
@@ -78,22 +82,21 @@ export function DownloadPane() {
         eventSourceRef.current = null;
         setJobId(null);
         setStatus('idle');
-        setArtifact(null);
-        setReceived(0);
-        setTotal(undefined);
+        setArtifacts([]);
+        setItemProgress({});
     }, []);
 
     const clearReleaseOptions = () => {
         setReleases([]);
         setReleasesError(null);
         form.setFieldValue('releaseTag', '');
-        form.setFieldValue('assetName', '');
+        form.setFieldValue('assetNames', []);
     };
 
     const selectRelease = (tagName: string, availableReleases = releases) => {
         const release = availableReleases.find((item) => item.tagName === tagName);
         form.setFieldValue('releaseTag', tagName);
-        form.setFieldValue('assetName', release?.assets.length === 1 ? release.assets[0].name : '');
+        form.setFieldValue('assetNames', release?.assets.length === 1 ? [release.assets[0].name] : []);
     };
 
     const loadReleases = async () => {
@@ -144,7 +147,7 @@ export function DownloadPane() {
                     target: values.target,
                     ref: values.ref.trim() || undefined,
                     releaseTag: values.releaseTag.trim() || undefined,
-                    assetName: values.assetName.trim() || undefined,
+                    assetNames: values.assetNames,
                     token: values.token || undefined,
                 }),
             });
@@ -157,15 +160,58 @@ export function DownloadPane() {
             eventSourceRef.current = eventSource;
             eventSource.onmessage = (event) => {
                 const data = JSON.parse(event.data) as ProgressEvent;
-                if (data.type === 'manifest-resolved') setArtifact((data.items as GitLabArchive[])[0] || null);
-                if (data.type === 'item-start') setTotal(data.total);
+                if (data.type === 'manifest-resolved') {
+                    const resolved = data.items as GitLabArchive[];
+                    setArtifacts(resolved);
+                    setItemProgress(Object.fromEntries(resolved.map((_item, index) => [index, {
+                        received: 0,
+                        status: 'waiting' as const,
+                    }])));
+                }
+                if (data.type === 'item-start') {
+                    setItemProgress((current) => ({
+                        ...current,
+                        [data.index]: { received: 0, total: data.total, status: 'running' },
+                    }));
+                }
                 if (data.type === 'item-progress') {
-                    setReceived(data.received);
-                    setTotal(data.total);
+                    setItemProgress((current) => ({
+                        ...current,
+                        [data.index]: { received: data.received, total: data.total, status: 'running' },
+                    }));
+                }
+                if (data.type === 'item-done') {
+                    setItemProgress((current) => ({
+                        ...current,
+                        [data.index]: {
+                            received: current[data.index]?.total || current[data.index]?.received || 0,
+                            total: current[data.index]?.total,
+                            status: 'done',
+                        },
+                    }));
+                }
+                if (data.type === 'item-error') {
+                    setItemProgress((current) => ({
+                        ...current,
+                        [data.index]: {
+                            received: current[data.index]?.received || 0,
+                            total: current[data.index]?.total,
+                            status: 'error',
+                            error: data.message,
+                        },
+                    }));
                 }
                 if (data.type === 'stage') setStatus(data.stage);
                 if (data.type === 'error') {
                     setError(data.message);
+                    setItemProgress((current) => Object.fromEntries(
+                        Object.entries(current).map(([index, progress]) => [
+                            index,
+                            progress.status === 'running'
+                                ? { ...progress, status: 'error' as const, error: data.message }
+                                : progress,
+                        ]),
+                    ));
                     setStatus('error');
                     eventSource.close();
                 }
@@ -192,20 +238,35 @@ export function DownloadPane() {
     }, [jobId, status, close, resetProgress]);
 
     const state: 'running' | 'done' | 'error' = status === 'done' ? 'done' : status === 'error' ? 'error' : 'running';
+    const progressEntries = artifacts.map((_artifact, index) => itemProgress[index] || { received: 0, status: 'waiting' as const });
+    const received = progressEntries.reduce((sum, item) => sum + item.received, 0);
+    const allTotalsKnown = progressEntries.length > 0 && progressEntries.every((item) => typeof item.total === 'number');
+    const total = allTotalsKnown
+        ? progressEntries.reduce((sum, item) => sum + (item.total || 0), 0)
+        : undefined;
     const percent = total ? Math.min(100, Math.floor((received / total) * 100)) : status === 'done' ? 100 : undefined;
     const sizeMb = (received / 1_000_000).toFixed(1);
-    const itemStatus = state === 'error' ? 'error' : state === 'done' ? 'done' : received > 0 ? 'running' : 'waiting';
     const isReleaseAsset = form.getValues().target === 'release-asset';
-    const downloadedReleaseAsset = artifact?.kind === 'release-asset' || jobTarget === 'release-asset';
+    const downloadedReleaseAsset = artifacts[0]?.kind === 'release-asset' || jobTarget === 'release-asset';
     const selectedRelease = releases.find((item) => item.tagName === form.getValues().releaseTag);
-    const items: ProgressItem[] = artifact ? [{
-        key: artifact.name,
-        label: artifact.name,
-        status: itemStatus,
-        percent,
-        meta: state === 'done' ? '完了' : total ? `${(total / 1_000_000).toFixed(1)}MB` : '取得中',
-        error: state === 'error' ? error || undefined : undefined,
-    }] : [];
+    const items: ProgressItem[] = artifacts.map((artifact, index) => {
+        const progress = progressEntries[index];
+        const itemPercent = progress.total
+            ? Math.min(100, Math.floor((progress.received / progress.total) * 100))
+            : progress.status === 'done' ? 100 : undefined;
+        return {
+            key: `${artifact.name}-${index}`,
+            label: artifact.name,
+            status: progress.status,
+            percent: itemPercent,
+            meta: progress.status === 'done'
+                ? '完了'
+                : progress.total
+                    ? `${(progress.total / 1_000_000).toFixed(1)}MB`
+                    : '待機中',
+            error: progress.error,
+        };
+    });
 
     return (
         <div>
@@ -294,22 +355,24 @@ export function DownloadPane() {
                                 />
                             </div>
                             <div style={{ marginTop: 16 }}>
-                                <Select
-                                    label="アセットファイル"
+                                <MultiSelect
+                                    label="アセットファイル（複数選択可）"
                                     required
                                     searchable
                                     leftSection={<IconFile size="1rem" />}
-                                    placeholder="ファイルを選択"
+                                    placeholder="ファイルを1件以上選択"
                                     data={(selectedRelease?.assets || []).map((asset) => ({
                                         value: asset.name,
                                         label: asset.fileName !== asset.name
                                             ? `${asset.fileName} — ${asset.name}`
                                             : asset.fileName,
                                     }))}
-                                    value={form.getValues().assetName || null}
-                                    onChange={(value) => form.setFieldValue('assetName', value || '')}
+                                    value={form.getValues().assetNames}
+                                    onChange={(value) => form.setFieldValue('assetNames', value)}
                                     disabled={loading || !selectedRelease}
-                                    error={form.errors.assetName as string | undefined}
+                                    error={form.errors.assetNames as string | undefined}
+                                    maxValues={50}
+                                    hidePickedOptions
                                 />
                             </div>
                             {releasesError && (
@@ -334,9 +397,9 @@ export function DownloadPane() {
                     )}
                 </CarbonSection>
 
-                <CarbonFooter hint="GitLab API経由で取得し、一時ストレージへ保存します">
+                <CarbonFooter hint={isReleaseAsset ? '複数選択時は1つのtarにまとめます' : 'GitLab API経由でZIPを取得します'}>
                     <CarbonSubmit loading={loading} icon={IconDownload}>
-                        {isReleaseAsset ? 'アセットを取得' : 'ZIPを取得'}
+                        {isReleaseAsset ? '選択したアセットを取得' : 'ZIPを取得'}
                     </CarbonSubmit>
                 </CarbonFooter>
             </CarbonForm>
@@ -352,12 +415,16 @@ export function DownloadPane() {
                 onClose={handleClose}
                 accent="gitlab"
                 title={state === 'done' ? '取得完了' : state === 'error' ? '取得に失敗' : 'GitLabから取得中'}
-                subtitle={artifact ? `${artifact.name} @ ${artifact.ref}` : 'GitLabの取得対象を確認しています…'}
+                subtitle={artifacts.length > 1
+                    ? `${artifacts.length} files @ ${artifacts[0].ref}`
+                    : artifacts[0]
+                        ? `${artifacts[0].name} @ ${artifacts[0].ref}`
+                        : 'GitLabの取得対象を確認しています…'}
                 overallPercent={percent}
                 state={state}
                 stats={[
                     { value: sizeMb, unit: ' MB', label: '取得サイズ' },
-                    { value: artifact?.ref || '-', label: downloadedReleaseAsset ? 'release' : 'ref' },
+                    { value: artifacts[0]?.ref || '-', label: downloadedReleaseAsset ? 'release' : 'ref' },
                 ]}
                 items={items}
                 banner={state === 'done' ? (
@@ -381,7 +448,9 @@ export function DownloadPane() {
                             target="_blank"
                             disabled={!jobId}
                         >
-                            {downloadedReleaseAsset ? 'ファイルをダウンロード' : 'ZIPをダウンロード'}
+                            {downloadedReleaseAsset
+                                ? artifacts.length > 1 ? 'tarをダウンロード' : 'ファイルをダウンロード'
+                                : 'ZIPをダウンロード'}
                         </Button>
                     </>
                 ) : (

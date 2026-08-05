@@ -48,6 +48,8 @@ export type HfFile = {
 export type GitLabArchive = {
     name: string;
     ref: string;
+    kind?: 'archive' | 'release-asset';
+    project?: string;
 };
 
 export type ProgressEvent =

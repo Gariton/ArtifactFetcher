@@ -1,6 +1,6 @@
 # ArtifactFetcher
 
-**Docker イメージ / npm パッケージ / Hugging Face モデル / GitLab リポジトリ** を、
+**Docker イメージ / npm パッケージ / Hugging Face モデル / GitLab リポジトリ・リリースアセット** を、
 サーバーサイドで依存関係を解決しながら取得し、  
 SSE で進捗を可視化しつつクライアントからダウンロードできる Web アプリ & CLI です。
 
@@ -8,7 +8,7 @@ SSE で進捗を可視化しつつクライアントからダウンロードで�
 - 進捗通知: `EventEmitter` → Server‑Sent Events (SSE)  
 - Docker: image の **pull → tar 出力**、および **tar から任意 Registry へ push** に対応  
 - npm: **lockfile 準拠**/ もしくは **パッケージ名@semver → 依存解決 → 全 tarball 取得**（SSE 対応）  
-- GitLab: ArtifactFetcher からのみ到達できる GitLab の **Repository Archive API → ZIP 取得**（SSE 対応）
+- GitLab: ArtifactFetcher からのみ到達できる GitLab の **リポジトリ ZIP / リリースアセット取得**（SSE 対応）
 
 ---
 
@@ -27,7 +27,7 @@ SSE で進捗を可視化しつつクライアントからダウンロードで�
   - [Docker イメージのダウンロード（tar）](#docker-イメージのダウンロードtar)
   - [Docker イメージのアップロード（tar → Registry）](#docker-イメージのアップロードtar--registry)
   - [npm パッケージのダウンロード](#npm-パッケージのダウンロード)
-  - [GitLab リポジトリのダウンロード](#gitlab-リポジトリのダウンロード)
+  - [GitLab リポジトリ・リリースアセットのダウンロード](#gitlab-リポジトリリリースアセットのダウンロード)
 - [トラブルシュート](#トラブルシュート)
 - [ライセンス](#ライセンス)
 
@@ -147,7 +147,7 @@ services:
 3. 完了後、ブラウザが自動で `.tar` をダウンロード  
 4. （オプション）Docker tar を **任意 Registry に push**（UI から複数ファイル一括アップロード可）  
 5. `/admin` からアクセスできる管理ページで、リクエストの履歴（時刻・IP・エンドポイント）を確認可能  
-6. **GitLab** では `group/subgroup/project` と任意の ref を指定し、サーバー経由で `.zip` を取得
+6. **GitLab** ではリポジトリ ZIP、またはプロジェクト内のリリースアセットを候補から選択して取得
 
 ### CLI
 Web サーバに対して CLI からダウンロードを発火できます。
@@ -217,17 +217,20 @@ npm run download -- npm next ^18 --host https://downloader.example.com --out dow
 - UI からレジストリ URL、Auth Token または Basic 認証情報を指定でき、進捗は SSE でモーダル表示  
 - 例: `https://nexus.example.com/repository/npm-hosted` + Auth Token（もしくはユーザー/パスワード）  
 
-### GitLab リポジトリのダウンロード
+### GitLab リポジトリ・リリースアセットのダウンロード
 - 接続先はサーバー環境変数 `GITLAB_BASE_URL` で固定し、ブラウザから閉域 GitLab へ直接アクセスしない
 - `group/subgroup/project` または数値の Project ID を指定可能
 - ブランチ、タグ、コミット SHA を ref として指定可能。未指定時はデフォルトブランチを取得
+- プロジェクトを指定してリリースタグ候補を取得し、`direct_asset_path` が設定されたアセットファイル候補から複数選択可能
+- 1ファイル選択時は元ファイルをそのまま返し、複数選択時は1つの `.tar` にまとめてダウンロード
 - プライベートプロジェクトは `GITLAB_TOKEN`、または UI で一時的に入力する Personal Access Token に対応
-- GitLab からの ZIP はストリーミングで S3 (MinIO) へ保存し、受信バイト数を SSE で通知
+- GitLab からのファイルはストリーミングで S3 (MinIO) へ保存し、受信バイト数を SSE で通知
 
 #### API
-- `POST /api/gitlab/start` … `{ project, ref?, token? }` → `{ jobId }`
+- `POST /api/gitlab/releases` … `{ project, token? }` → リリースタグとアセットファイル候補
+- `POST /api/gitlab/start` … ZIP: `{ project, target: "archive", ref?, token? }` / リリースアセット: `{ project, target: "release-asset", releaseTag, assetNames: string[], token? }` → `{ jobId }`
 - `GET /api/build/progress?jobId=...` … SSE
-- `GET /api/build/download?jobId=...` … `.zip` ダウンロード
+- `GET /api/build/download?jobId=...` … ZIPまたはリリースアセットをダウンロード
 
 ---
 

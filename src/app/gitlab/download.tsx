@@ -29,6 +29,22 @@ import {
 } from '@tabler/icons-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+function formatReleasedAt(releasedAt?: string): string | null {
+    if (!releasedAt) return null;
+
+    const date = new Date(releasedAt);
+    if (Number.isNaN(date.getTime())) return null;
+
+    return new Intl.DateTimeFormat('ja-JP', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZoneName: 'short',
+    }).format(date);
+}
+
 export function DownloadPane() {
     const [loading, setLoading] = useState(false);
     const [releasesLoading, setReleasesLoading] = useState(false);
@@ -342,12 +358,18 @@ export function DownloadPane() {
                                     searchable
                                     leftSection={<IconTag size="1rem" />}
                                     placeholder={releasesLoading ? '取得中…' : 'タグを選択'}
-                                    data={releases.map((release) => ({
-                                        value: release.tagName,
-                                        label: release.name && release.name !== release.tagName
+                                    data={releases.map((release) => {
+                                        const title = release.name && release.name !== release.tagName
                                             ? `${release.tagName} — ${release.name}`
-                                            : release.tagName,
-                                    }))}
+                                            : release.tagName;
+                                        const releasedAt = formatReleasedAt(release.releasedAt);
+                                        return {
+                                            value: release.tagName,
+                                            label: releasedAt
+                                                ? `${title}（リリース日時: ${releasedAt}）`
+                                                : title,
+                                        };
+                                    })}
                                     value={form.getValues().releaseTag || null}
                                     onChange={(value) => selectRelease(value || '')}
                                     disabled={loading || releasesLoading || releases.length === 0}

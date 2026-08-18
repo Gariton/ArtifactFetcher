@@ -5,6 +5,7 @@ import {
     downloadGitLabArchive,
     downloadGitLabReleaseAssets,
 } from '@/lib/gitlab/downloader';
+import { readGitLabRuntimeConfig } from '@/lib/gitlab/config';
 import { ProgressBus, globalBusMap } from '@/lib/progressBus';
 import { logRequest } from '@/lib/requestLog';
 import { makeArtifactObjectKey } from '@/lib/storage/s3';
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
             ? [body.assetName.trim()]
             : [];
     const requestToken = typeof body?.token === 'string' ? body.token.trim() : '';
-    const baseUrl = process.env.GITLAB_BASE_URL?.trim() || '';
+    const { baseUrl, token: configuredToken } = readGitLabRuntimeConfig();
 
     if (!baseUrl) {
         return Response.json({ error: 'GITLAB_BASE_URLが設定されていません' }, { status: 503 });
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
             const common = {
                 baseUrl,
                 project,
-                token: requestToken || process.env.GITLAB_TOKEN,
+                token: requestToken || configuredToken,
                 objectKey,
                 bus,
             };

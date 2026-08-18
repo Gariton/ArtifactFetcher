@@ -6,6 +6,8 @@ services:
     container_name: ArtifactFetcher_develop
     tty: true
     working_dir: /app
+    env_file:
+      - ./.env
     volumes:
       - ./:/app
       - ${CERT}:/etc/pki/tls/certs/auth.crt

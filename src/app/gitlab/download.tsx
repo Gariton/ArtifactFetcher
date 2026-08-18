@@ -1,6 +1,5 @@
 'use client';
 
-import { getEnvironmentVar } from '@/components/actions';
 import {
     CarbonAuthPanel,
     CarbonField,
@@ -27,7 +26,7 @@ import {
     IconSearch,
     IconTag,
 } from '@tabler/icons-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 function formatReleasedAt(releasedAt?: string): string | null {
     if (!releasedAt) return null;
@@ -45,14 +44,17 @@ function formatReleasedAt(releasedAt?: string): string | null {
     }).format(date);
 }
 
-export function DownloadPane() {
+type DownloadPaneProps = {
+    baseUrl: string;
+    configuredToken: boolean;
+};
+
+export function DownloadPane({ baseUrl, configuredToken }: DownloadPaneProps) {
     const [loading, setLoading] = useState(false);
     const [releasesLoading, setReleasesLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [releasesError, setReleasesError] = useState<string | null>(null);
     const [releases, setReleases] = useState<GitLabReleaseOption[]>([]);
-    const [baseUrl, setBaseUrl] = useState('');
-    const [configuredToken, setConfiguredToken] = useState(false);
     const [jobId, setJobId] = useState<string | null>(null);
     const [jobTarget, setJobTarget] = useState('archive');
     const [status, setStatus] = useState('idle');
@@ -85,13 +87,6 @@ export function DownloadPane() {
                 : 'リリースアセットを選択してください',
         },
     });
-
-    useEffect(() => {
-        getEnvironmentVar().then((env) => {
-            setBaseUrl(env.GITLAB_BASE_URL);
-            setConfiguredToken(env.GITLAB_TOKEN_CONFIGURED === 'yes');
-        });
-    }, []);
 
     const resetProgress = useCallback(() => {
         eventSourceRef.current?.close();

@@ -11,20 +11,14 @@ import { PageHeader } from '@/components/PageHeader';
 type RpmEnv = {
     RPM_UPLOAD: string;
     RPM_UPLOAD_REPOSITORY_URL: string;
-    RPM_UPLOAD_USERNAME: string;
-    RPM_UPLOAD_PASSWORD: string;
-    RPM_UPLOAD_TOKEN: string;
     RPM_UPLOAD_METHOD: string;
     RPM_UPLOAD_IGNORE_TLS_VERIFY: string;
 };
 
 export default function RpmPage() {
     const [env, setEnv] = useState<RpmEnv>({
-        RPM_UPLOAD: 'yes',
+        RPM_UPLOAD: 'false',
         RPM_UPLOAD_REPOSITORY_URL: '',
-        RPM_UPLOAD_USERNAME: '',
-        RPM_UPLOAD_PASSWORD: '',
-        RPM_UPLOAD_TOKEN: '',
         RPM_UPLOAD_METHOD: 'put',
         RPM_UPLOAD_IGNORE_TLS_VERIFY: '',
     });
@@ -32,11 +26,8 @@ export default function RpmPage() {
     useEffect(() => {
         getEnvironmentVar().then((vars: any) => {
             setEnv({
-                RPM_UPLOAD: vars.RPM_UPLOAD ?? 'yes',
+                RPM_UPLOAD: vars.RPM_UPLOAD ?? 'false',
                 RPM_UPLOAD_REPOSITORY_URL: vars.RPM_UPLOAD_REPOSITORY_URL ?? '',
-                RPM_UPLOAD_USERNAME: vars.RPM_UPLOAD_USERNAME ?? '',
-                RPM_UPLOAD_PASSWORD: vars.RPM_UPLOAD_PASSWORD ?? '',
-                RPM_UPLOAD_TOKEN: vars.RPM_UPLOAD_TOKEN ?? '',
                 RPM_UPLOAD_METHOD: vars.RPM_UPLOAD_METHOD ?? 'put',
                 RPM_UPLOAD_IGNORE_TLS_VERIFY: vars.RPM_UPLOAD_IGNORE_TLS_VERIFY ?? '',
             });

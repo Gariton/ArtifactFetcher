@@ -17,6 +17,8 @@ const APP_USER = process.env.APP_AUTH_USER;
 const APP_PASSWORD = process.env.APP_AUTH_PASSWORD;
 const ADMIN_USER = process.env.ADMIN_AUTH_USER;
 const ADMIN_PASSWORD = process.env.ADMIN_AUTH_PASSWORD;
+const ALLOWED_ORIGINS = process.env.APP_ALLOWED_ORIGINS || '';
+const TRUST_PROXY_HEADERS = /^(1|true|on|yes)$/i.test(process.env.TRUST_PROXY_HEADERS || '');
 
 function unauthorized(realm: string): NextResponse {
     return new NextResponse('Authentication required', {
@@ -56,8 +58,52 @@ function requireBasic(req: NextRequest, expectedUser: string, expectedPassword: 
     return unauthorized(realm);
 }
 
-export function middleware(req: NextRequest) {
+function normalizeOrigin(value: string): string | null {
+    try {
+        const url = new URL(value.trim());
+        return ['http:', 'https:'].includes(url.protocol) ? url.origin : null;
+    } catch {
+        return null;
+    }
+}
+
+function hasTrustedMutationOrigin(req: NextRequest): boolean {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method.toUpperCase())) return true;
+    const origin = req.headers.get('origin');
+    const fetchSite = req.headers.get('sec-fetch-site')?.toLowerCase();
+    if (!origin) return fetchSite !== 'cross-site';
+    if (origin === 'null') return false;
+
+    const allowed = new Set<string>([req.nextUrl.origin]);
+    for (const candidate of ALLOWED_ORIGINS.split(',')) {
+        const normalized = normalizeOrigin(candidate);
+        if (normalized) allowed.add(normalized);
+    }
+    if (TRUST_PROXY_HEADERS) {
+        const forwardedHost = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim();
+        const forwardedProto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
+        if (forwardedHost && /^(https?)$/i.test(forwardedProto || '')) {
+            const normalized = normalizeOrigin(`${forwardedProto}://${forwardedHost}`);
+            if (normalized) allowed.add(normalized);
+        }
+    }
+    const normalized = normalizeOrigin(origin);
+    return Boolean(normalized && allowed.has(normalized));
+}
+
+export function proxy(req: NextRequest) {
     const isAdmin = req.nextUrl.pathname.startsWith('/admin');
+
+    if (!hasTrustedMutationOrigin(req)) {
+        return new NextResponse('Untrusted request origin', { status: 403 });
+    }
+
+    if (Boolean(APP_USER) !== Boolean(APP_PASSWORD)) {
+        return new NextResponse('Application authentication is misconfigured', { status: 503 });
+    }
+    if (isAdmin && Boolean(ADMIN_USER) !== Boolean(ADMIN_PASSWORD)) {
+        return new NextResponse('Admin authentication is misconfigured', { status: 503 });
+    }
 
     // /admin は管理画面専用の認証を優先する。
     if (isAdmin && ADMIN_USER && ADMIN_PASSWORD) {
@@ -81,5 +127,7 @@ export const config = {
     // 大きな tar/パッケージが途中で切られ busboy が "Unexpected end of form" を
     // 投げてしまう。これらのルートはミドルウェアを通さず元のボディを
     // 直接ストリーミングさせる（メモリにバッファせず安全に大容量を扱える）。
-    matcher: ['/((?!_next/static|_next/image|favicon.ico|api/(?:docker|npm|pip|rpm)/upload).*)'],
+    // 除外対象の Route Handler は requireUploadAccess() で同じ Basic 認証、
+    // Origin 検証、および機能フラグをボディ読み取り前に強制する。
+    matcher: ['/((?!_next/static|_next/image|favicon.ico|api/health|api/(?:docker|npm|pip|rpm)/upload).*)'],
 };

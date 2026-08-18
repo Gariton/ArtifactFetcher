@@ -11,11 +11,8 @@ import { PageHeader } from '@/components/PageHeader';
 export default function NpmPage() {
 
     const [env, setEnv] = useState({
-        NPM_UPLOAD: "yes",
+        NPM_UPLOAD: "false",
         NPM_UPLOAD_REGISTRY: "",
-        NPM_UPLOAD_AUTH_TOKEN: "",
-        NPM_UPLOAD_USERNAME: "",
-        NPM_UPLOAD_PASSWORD: "",
     });
 
     useEffect(() => {
@@ -23,9 +20,6 @@ export default function NpmPage() {
             setEnv({
                 NPM_UPLOAD: v.NPM_UPLOAD,
                 NPM_UPLOAD_REGISTRY: v.NPM_UPLOAD_REGISTRY,
-                NPM_UPLOAD_AUTH_TOKEN: v.NPM_UPLOAD_AUTH_TOKEN,
-                NPM_UPLOAD_USERNAME: v.NPM_UPLOAD_USERNAME,
-                NPM_UPLOAD_PASSWORD: v.NPM_UPLOAD_PASSWORD
             });
         });
     }, [])

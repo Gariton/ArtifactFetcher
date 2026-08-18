@@ -28,6 +28,8 @@ function mapStatus(s?: string): ProgressItemStatus {
         case 'uploaded':
         case 'published':
             return 'done';
+        case 'skipped':
+            return 'skipped';
         case 'uploading':
         case 'publishing':
             return 'running';
@@ -51,6 +53,7 @@ export function PackageUploadModal({ files, perFile, status, jobId, onClose, acc
         const percent = total > 0 ? Math.min(100, Math.floor((received / total) * 100)) : 0;
         const meta =
             st === 'done' ? '完了' :
+            st === 'skipped' ? '登録済み' :
             st === 'waiting' ? '待機' :
             st === 'error' ? 'error' :
             `${percent}%`;
@@ -65,24 +68,30 @@ export function PackageUploadModal({ files, perFile, status, jobId, onClose, acc
     });
 
     const doneCount = items.filter((i) => i.status === 'done').length;
+    const skippedCount = items.filter((i) => i.status === 'skipped').length;
+    const completedCount = doneCount + skippedCount;
     const errorCount = items.filter((i) => i.status === 'error').length;
     const totalSize = files.reduce((a, f) => a + (perFile[files.indexOf(f)]?.total ?? f.size), 0);
-    const overall = files.length > 0 ? Math.floor((doneCount / files.length) * 100) : 0;
+    const overall = files.length > 0 ? Math.floor((completedCount / files.length) * 100) : 0;
 
     const state: 'running' | 'done' | 'error' =
         status === 'done' ? 'done' : (status === 'error' || errorCount > 0) && status !== 'running' ? 'error' : status === 'running' ? 'running' : 'running';
 
     const banner =
         state === 'done' ? (
-            <ProgressBanner tone="success" title={`${doneCount} 件すべて publish しました`} detail={`${files.length} ファイル · ${mb(totalSize)}`} />
+            <ProgressBanner
+                tone="success"
+                title={`${doneCount} 件をpublish${skippedCount ? ` · ${skippedCount} 件は登録済み` : ''}`}
+                detail={`${files.length} ファイル · ${mb(totalSize)}`}
+            />
         ) : state === 'error' ? (
-            <ProgressBanner tone="error" title={`${doneCount} 件完了 · ${errorCount} 件失敗`} detail="失敗した項目は再試行できます。" />
+            <ProgressBanner tone="error" title={`${completedCount} 件完了 · ${errorCount} 件失敗`} detail="失敗した項目は再試行できます。" />
         ) : undefined;
 
     const footer = (
         <>
             <Text className="af-mono" fz={12.5} c="var(--af-muted)">
-                {doneCount} / {files.length} 完了
+                {completedCount} / {files.length} 完了
             </Text>
             <Button variant="default" radius="md" onClick={onClose}>閉じる</Button>
         </>
@@ -98,7 +107,7 @@ export function PackageUploadModal({ files, perFile, status, jobId, onClose, acc
             overallPercent={files.length === 0 ? undefined : overall}
             state={state}
             stats={[
-                { value: doneCount, unit: `/${files.length}`, label: '完了', accent: state === 'done' },
+                { value: completedCount, unit: `/${files.length}`, label: '完了', accent: state === 'done' },
                 { value: errorCount, label: '失敗' },
                 { value: mb(totalSize).replace(' MB', ''), unit: ' MB', label: '合計' },
             ]}

@@ -11,30 +11,21 @@ import { PageHeader } from '@/components/PageHeader';
 type PipEnv = {
     PIP_UPLOAD: string;
     PIP_UPLOAD_REGISTRY: string;
-    PIP_UPLOAD_USERNAME: string;
-    PIP_UPLOAD_PASSWORD: string;
-    PIP_UPLOAD_TOKEN: string;
     PIP_UPLOAD_SKIP_EXISTING: string;
 };
 
 export default function PipPage() {
     const [env, setEnv] = useState<PipEnv>({
-        PIP_UPLOAD: 'yes',
+        PIP_UPLOAD: 'false',
         PIP_UPLOAD_REGISTRY: '',
-        PIP_UPLOAD_USERNAME: '',
-        PIP_UPLOAD_PASSWORD: '',
-        PIP_UPLOAD_TOKEN: '',
         PIP_UPLOAD_SKIP_EXISTING: 'false',
     });
 
     useEffect(() => {
         getEnvironmentVar().then((vars: any) => {
             setEnv({
-                PIP_UPLOAD: vars.PIP_UPLOAD ?? 'yes',
+                PIP_UPLOAD: vars.PIP_UPLOAD ?? 'false',
                 PIP_UPLOAD_REGISTRY: vars.PIP_UPLOAD_REGISTRY ?? '',
-                PIP_UPLOAD_USERNAME: vars.PIP_UPLOAD_USERNAME ?? '',
-                PIP_UPLOAD_PASSWORD: vars.PIP_UPLOAD_PASSWORD ?? '',
-                PIP_UPLOAD_TOKEN: vars.PIP_UPLOAD_TOKEN ?? '',
                 PIP_UPLOAD_SKIP_EXISTING: vars.PIP_UPLOAD_SKIP_EXISTING ?? 'false',
             });
         });

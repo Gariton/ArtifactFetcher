@@ -6,9 +6,13 @@ import path from 'node:path';
 import Busboy from 'busboy';
 import { jobStore } from '@/lib/jobStore';
 import { FileInfo, ProgressBus, RepoTag, globalBusMap as busMap } from '@/lib/progressBus';
-import { pushImageToRegistry } from '@/lib/docker/registryPusher';
+import { normalizeDockerRegistryUrl, pushImageToRegistry } from '@/lib/docker/registryPusher';
 import { readLoadManifestFromTar, repoTagFromRepoTags } from '@/lib/docker/readDockerLoadManifest';
-import { readUploadAuth } from '@/lib/authHeaders';
+import { resolveUploadAuth } from '@/lib/authHeaders';
+import { requireUploadAccess } from '@/lib/requestSecurity';
+import { isValidJobId } from '@/lib/inputSafety';
+import { RESOURCE_LIMITS } from '@/lib/resourceLimits';
+import { waitForDrain } from '@/lib/streamSafety';
 
 
 export const runtime = 'nodejs';
@@ -27,17 +31,28 @@ type PushCtx = {
 };
 
 export async function POST(req: NextRequest) {
+    const accessFailure = requireUploadAccess(req, 'docker');
+    if (accessFailure) return accessFailure;
+
     // クエリで push 先の共通設定を受ける
     const { searchParams } = new URL(req.url);
     const useManifest = (searchParams.get('useManifest') || 'false') === 'true';
     const jobId = searchParams.get("jobId");
-    if (!jobId) {
+    if (!isValidJobId(jobId)) {
         return new Response(JSON.stringify({error: 'missing jobId'}), {status: 400});
     }
-    const { username, password } = readUploadAuth(req.headers);
+    const registry = searchParams.get('registry') || '';
+    const { username, password } = resolveUploadAuth(req.headers, {
+        requestedRegistry: registry,
+        configuredRegistry: process.env.DOCKER_UPLOAD_REGISTRY,
+        defaults: {
+            username: process.env.DOCKER_UPLOAD_USERNAME,
+            password: process.env.DOCKER_UPLOAD_PASSWORD,
+        },
+    });
     const ctx: PushCtx = {
         jobId,
-        registry:  searchParams.get('registry')   || '',
+        registry,
         repository: (searchParams.get('repository') || '').toLowerCase(),
         tag:       searchParams.get('tag') || undefined,
         username,
@@ -48,36 +63,57 @@ export async function POST(req: NextRequest) {
     if (!ctx.registry) {
         return new Response(JSON.stringify({ error: 'missing registry' }), { status: 400 });
     }
+    try { normalizeDockerRegistryUrl(ctx.registry, Boolean(ctx.username || ctx.password)); }
+    catch (error) { return Response.json({ error: (error as Error).message }, { status: 400 }); }
     if (!req.body) return new Response('no body', { status: 400 });
-    
+    const contentType = req.headers.get('content-type') || '';
+    if (!contentType.toLowerCase().startsWith('multipart/form-data')) {
+        return new Response(JSON.stringify({ error: 'content-type must be multipart/form-data' }), { status: 400 });
+    }
+    const contentLength = Number(req.headers.get('content-length') || 0);
+    if (contentLength > RESOURCE_LIMITS.maxUploadBytes) {
+        return Response.json({ error: `upload size exceeds limit (${RESOURCE_LIMITS.maxUploadBytes} bytes)` }, { status: 413 });
+    }
+    let bb: ReturnType<typeof Busboy>;
+    try {
+        bb = Busboy({
+            headers: { 'content-type': contentType },
+            limits: { files: RESOURCE_LIMITS.maxUploadFiles, fileSize: RESOURCE_LIMITS.maxSingleFileBytes },
+        });
+    } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : 'invalid multipart request' }, { status: 400 });
+    }
+    if (!jobStore.claim(jobId)) {
+        return Response.json({ error: 'job capacity exceeded or jobId is already in use' }, { status: 503 });
+    }
+
+    // --- multipart をストリーミングで保存 ---
     const bus = busMap.get(ctx.jobId) ?? new ProgressBus();
     busMap.set(ctx.jobId, bus);
 
     bus.emitEvent({type: "stage", stage: "upload-receive-start"});
 
     // 受け取り先
-    const tmpRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'push-multi-'));
+    let tmpRoot: string;
+    try {
+        tmpRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'push-multi-'));
+    } catch (error) {
+        jobStore.delete(jobId);
+        return Response.json({ error: error instanceof Error ? error.message : 'failed to create upload workspace' }, { status: 500 });
+    }
     const files: Array<FileInfo> = [];
     const saves: Promise<void>[] = [];
-
-    // --- multipart をストリーミングで保存 ---
-    const contentType = req.headers.get('content-type') || '';
-    if (!contentType.toLowerCase().startsWith('multipart/form-data')) {
-        return new Response(JSON.stringify({ error: 'content-type must be multipart/form-data' }), { status: 400 });
-    }
-    
-    const bb = Busboy({ headers: { 'content-type': contentType } });
 
     let uploadIndex = 0;
 
     const finished = new Promise<void>((resolve, reject) => {
         bb.on('file', (_field, fileStream, info) => {
             const safeName = path.basename(info.filename || `file-${Date.now()}.tar`);
-            const tmpPath = path.join(tmpRoot, safeName);
+            const myIndex = uploadIndex++;
+            const tmpPath = path.join(tmpRoot, `${myIndex}-${safeName}`);
             const ws = fs.createWriteStream(tmpPath);
             files.push({ name: safeName, tmpPath });
 
-            const myIndex = uploadIndex++;
             let received = 0;
             bus.emitEvent({type: 'item-start', scope: 'upload', index: myIndex, digest: safeName});
 
@@ -88,6 +124,9 @@ export async function POST(req: NextRequest) {
             fileStream.on("end", () => {
                 bus.emitEvent({type: 'item-done', scope: 'upload', index: myIndex});
             })
+            fileStream.on('limit', () => {
+                bb.destroy(new Error(`file size exceeds limit (${RESOURCE_LIMITS.maxSingleFileBytes} bytes)`));
+            });
             fileStream.pipe(ws);
 
             const save = new Promise<void>((resolve, reject) => {
@@ -100,6 +139,7 @@ export async function POST(req: NextRequest) {
             save.catch(() => {});
             saves.push(save);
         });
+        bb.on('filesLimit', () => reject(new Error(`file count exceeds limit (${RESOURCE_LIMITS.maxUploadFiles})`)));
         bb.on('error', reject);
         bb.on('close', resolve);
     });
@@ -110,19 +150,25 @@ export async function POST(req: NextRequest) {
     // getReader() で最後まで読み切ってから明示的に bb.end() する。
     const pump = (async () => {
         const reader = (req.body as ReadableStream<Uint8Array>).getReader();
+        let receivedTotal = 0;
         try {
             for (;;) {
                 const { done, value } = await reader.read();
                 if (done) break;
                 if (value && value.byteLength) {
+                    receivedTotal += value.byteLength;
+                    if (receivedTotal > RESOURCE_LIMITS.maxUploadBytes) {
+                        throw new Error(`upload size exceeds limit (${RESOURCE_LIMITS.maxUploadBytes} bytes)`);
+                    }
                     // バックプレッシャを尊重し、書き込みが詰まったら drain を待つ。
                     if (!bb.write(Buffer.from(value))) {
-                        await new Promise<void>((res) => bb.once('drain', res));
+                        await waitForDrain(bb);
                     }
                 }
             }
             bb.end();
         } catch (err) {
+            await reader.cancel(err).catch(() => undefined);
             bb.destroy(err as Error);
             throw err;
         }
@@ -141,10 +187,10 @@ export async function POST(req: NextRequest) {
 
     if (files.length === 0) {
         try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch {}
+        jobStore.set(jobId, { status: 'error', error: 'no files' });
+        bus.emitEvent({ type: 'error', message: 'no files' });
         return new Response(JSON.stringify({ error: 'no files' }), { status: 400 });
     }
-
-    jobStore.set(jobId, { status: 'running' });
 
     (async () => {
         try {
@@ -214,8 +260,10 @@ export async function POST(req: NextRequest) {
             jobStore.set(jobId, { status: failures.length ? 'error' : 'done', filename: summary });
             if (failures.length) {
                 bus.emitEvent({ type: 'error-summary', successes, failures });
+                bus.emitEvent({ type: 'error', message: summary });
+            } else {
+                bus.emitEvent({ type: 'done', filename: summary });
             }
-            bus.emitEvent({ type: 'done', filename: summary });
 
         } catch (e: any) {
             jobStore.set(jobId, { status: 'error', error: e?.message || 'failed' });

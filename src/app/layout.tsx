@@ -1,23 +1,8 @@
 import { MantineProvider, ColorSchemeScript, mantineHtmlProps } from "@mantine/core";
 import { ReactNode } from "react";
-import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import { DefalutLayout } from "@/components/Layout/default";
 import { theme } from "../../theme";
 import "./globals.css";
-
-const plexSans = IBM_Plex_Sans({
-    subsets: ["latin"],
-    weight: ["300", "400", "500", "600", "700"],
-    variable: "--font-plex-sans",
-    display: "swap",
-});
-
-const plexMono = IBM_Plex_Mono({
-    subsets: ["latin"],
-    weight: ["400", "500", "600"],
-    variable: "--font-plex-mono",
-    display: "swap",
-});
 
 export default function Layout({
     children
@@ -28,7 +13,6 @@ export default function Layout({
         <html
             lang="en"
             {...mantineHtmlProps}
-            className={`${plexSans.variable} ${plexMono.variable}`}
         >
             <head>
                 <ColorSchemeScript defaultColorScheme="auto"/>

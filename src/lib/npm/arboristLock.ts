@@ -33,6 +33,9 @@ export function nerfDart(registry: string): string {
  */
 export function buildNpmRegistryAuth(registry: string, auth?: NpmAuth): Record<string, string> {
     if (!auth) return {};
+    if (new URL(registry).protocol !== 'https:' && (auth.token || auth.username || auth.password)) {
+        throw new Error('npm registry credentials require an HTTPS URL');
+    }
     const nd = nerfDart(registry);
     const token = auth.token?.trim();
     const username = auth.username?.trim();
@@ -50,39 +53,67 @@ export function buildNpmRegistryAuth(registry: string, auth?: NpmAuth): Record<s
 
 export async function makeLockFromSpecs(specs: string[], bus: ProgressBus, registry?: string, auth?: NpmAuth) {
     bus.emitEvent({ type: 'stage', stage: 'arborist-init' });
-    const work = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'npmlock-'));
-    const pkgJson = {
-        name: 'tmp-project',
-        version: '1.0.0',
-        private: true,
-        dependencies: Object.fromEntries(
-            specs.map(s => { const p = npa(s); return [p.name!, p.rawSpec || 'latest']; })
-        ),
-    };
-    await fs.promises.writeFile(path.join(work, 'package.json'), JSON.stringify(pkgJson, null, 2));
-
-    const arbOpts: Record<string, unknown> = { path: work };
     if (registry) {
-        // 指定パッケージのうちスコープ付き（@scope/...）のスコープを抽出する。
-        const scopes = Array.from(new Set(
-            specs.map((s) => { try { return npa(s).scope; } catch { return undefined; } })
-                .filter((s): s is string => !!s)
-        ));
-        if (scopes.length) {
-            // スコープ単位でレジストリを割り当てる。
-            // → @scope は指定レジストリから、その他（public 依存）は既定の npm から解決。
-            for (const scope of scopes) arbOpts[`${scope}:registry`] = registry;
-        } else {
-            // スコープ無し → 既定レジストリ自体を差し替える（プライベートミラー想定）。
-            arbOpts.registry = registry;
+        const registryUrl = new URL(registry);
+        if (!['http:', 'https:'].includes(registryUrl.protocol) || registryUrl.username || registryUrl.password || registryUrl.search || registryUrl.hash) {
+            throw new Error('npm registry URL must be HTTP(S) without credentials, query, or fragment');
         }
-        // 認証は指定レジストリのホストにのみ送る（public npm にトークンを漏らさない）。
-        Object.assign(arbOpts, buildNpmRegistryAuth(registry, auth));
+        if ((auth?.token || auth?.username || auth?.password) && registryUrl.protocol !== 'https:') {
+            throw new Error('npm registry credentials require an HTTPS URL');
+        }
+        if (!registryUrl.pathname.endsWith('/')) registryUrl.pathname += '/';
+        registry = registryUrl.toString();
     }
+    const work = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'npmlock-'));
+    try {
+        const parsedSpecs = specs.map((spec) => {
+            const parsed = npa(spec);
+            if (!parsed.registry || !parsed.name) {
+                throw new Error(`only npm registry package specifications are allowed: ${spec}`);
+            }
+            return parsed;
+        });
+        const pkgJson = {
+            name: 'tmp-project',
+            version: '1.0.0',
+            private: true,
+            dependencies: Object.fromEntries(
+                parsedSpecs.map((parsed) => [parsed.name!, parsed.rawSpec || 'latest'])
+            ),
+        };
+        await fs.promises.writeFile(path.join(work, 'package.json'), JSON.stringify(pkgJson, null, 2));
 
-    const arb = new Arborist(arbOpts as any);
-    bus.emitEvent({ type: 'stage', stage: 'resolve-deps' });
-    await arb.reify({ add: [], save: true });
-    const lockText = await fs.promises.readFile(path.join(work, 'package-lock.json'), 'utf8');
-    return { lockText, workDir: work };
+        const arbOpts: Record<string, unknown> = {
+            path: work,
+            ignoreScripts: true,
+            packageLockOnly: true,
+        };
+        if (registry) {
+            // 指定パッケージのうちスコープ付き（@scope/...）のスコープを抽出する。
+            const scopes = Array.from(new Set(
+                parsedSpecs.map((parsed) => parsed.scope)
+                    .filter((s): s is string => !!s)
+            ));
+            if (scopes.length) {
+                // スコープ単位でレジストリを割り当てる。
+                // → @scope は指定レジストリから、その他（public 依存）は既定の npm から解決。
+                for (const scope of scopes) arbOpts[`${scope}:registry`] = registry;
+            } else {
+                // スコープ無し → 既定レジストリ自体を差し替える（プライベートミラー想定）。
+                arbOpts.registry = registry;
+            }
+            // 認証は指定レジストリのホストにのみ送る（public npm にトークンを漏らさない）。
+            Object.assign(arbOpts, buildNpmRegistryAuth(registry, auth));
+        }
+
+        const arb = new Arborist(arbOpts as any);
+        bus.emitEvent({ type: 'stage', stage: 'resolve-deps' });
+        // Dependency resolution must never execute lifecycle scripts from a
+        // user-selected package on the ArtifactFetcher server.
+        await arb.reify({ add: [], save: true, ignoreScripts: true, packageLockOnly: true } as any);
+        const lockText = await fs.promises.readFile(path.join(work, 'package-lock.json'), 'utf8');
+        return { lockText };
+    } finally {
+        try { await fs.promises.rm(work, { recursive: true, force: true }); } catch {}
+    }
 }

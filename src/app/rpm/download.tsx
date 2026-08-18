@@ -22,6 +22,7 @@ type CustomRepo = {
     label?: string;
     folderName?: string;
     baseUrl: string;
+    gpgKeyUrl: string;
 };
 
 function parseCustomRepositories(input: string): { repositories: CustomRepo[]; errors: string[] } {
@@ -34,7 +35,7 @@ function parseCustomRepositories(input: string): { repositories: CustomRepo[]; e
     const errors: string[] = [];
     lines.forEach((line, index) => {
         const cols = line.split('|').map((part) => part.trim());
-        const [id, label, baseUrl] = cols.length >= 3 ? cols : ['', cols[0] || '', cols[0] || ''];
+        const [id, label, baseUrl, gpgKeyUrl] = cols.length >= 4 ? cols : ['', '', cols[0] || '', ''];
         if (!baseUrl) {
             errors.push(`${index + 1}行目: URLが空です`);
             return;
@@ -43,11 +44,16 @@ function parseCustomRepositories(input: string): { repositories: CustomRepo[]; e
             errors.push(`${index + 1}行目: URLは http:// または https:// で始めてください`);
             return;
         }
+        if (!/^https:\/\//i.test(gpgKeyUrl || '')) {
+            errors.push(`${index + 1}行目: GPGキーURLは https:// で始めてください（id|label|url|gpgKeyUrl）`);
+            return;
+        }
         repositories.push({
             id: id || undefined,
             label: label || undefined,
             folderName: label || id || undefined,
             baseUrl,
+            gpgKeyUrl,
         });
     });
     return { repositories, errors };
@@ -258,10 +264,10 @@ export function DownloadPane() {
                             small
                             value={fv.customRepositories}
                             onChange={(val) => form.setFieldValue('customRepositories', val)}
-                            placeholder={'https://download.example.com/rhel/8/BaseOS/x86_64/os/\ncustom-rhel8-appstream|RHEL 8 AppStream|https://download.example.com/rhel/8/AppStream/x86_64/os/'}
+                            placeholder={'custom-rhel8-baseos|RHEL 8 BaseOS|https://download.example.com/rhel/8/BaseOS/x86_64/os/|https://download.example.com/keys/RPM-GPG-KEY-example'}
                             rows={3}
                             disabled={loading}
-                            desc="1行1件。URL のみ、または id|label|url 形式で入力"
+                            desc="1行1件。署名検証のため id|label|url|gpgKeyUrl 形式で入力"
                             error={form.errors.customRepositories as string | undefined}
                         />
                         <CarbonField

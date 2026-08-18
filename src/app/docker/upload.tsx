@@ -27,8 +27,6 @@ type FormType = {
 type EnvType = {
     DOCKER_UPLOAD: string;
     DOCKER_UPLOAD_REGISTRY: string;
-    DOCKER_UPLOAD_USERNAME: string;
-    DOCKER_UPLOAD_PASSWORD: string;
 }
 
 export function UploadPane() {
@@ -57,10 +55,8 @@ export function UploadPane() {
     }, []);
     const stopSseRef = useRef<() => void>(() => {});
     const [env, setEnv] = useState<EnvType>({
-        DOCKER_UPLOAD: "yes",
+        DOCKER_UPLOAD: "false",
         DOCKER_UPLOAD_REGISTRY: "",
-        DOCKER_UPLOAD_USERNAME: "",
-        DOCKER_UPLOAD_PASSWORD: "",
     });
     
     const handleSseMessage = useCallback((event: MessageEvent) => {
@@ -270,7 +266,7 @@ export function UploadPane() {
         stopSseRef.current = stopSse;
     }, [stopSse]);
 
-    const reset = ({ preserveProgress = false }: { preserveProgress?: boolean } = {}) => {
+    const reset = useCallback(({ preserveProgress = false }: { preserveProgress?: boolean } = {}) => {
         setJobId(null);
         if (!preserveProgress) {
             manifests.clear();
@@ -284,7 +280,7 @@ export function UploadPane() {
         }
         stopSse();
         indexMapRef.current = new Map();
-    };
+    }, [manifests, stopSse]);
     const form = useForm<FormType>({
         mode: "controlled",
         initialValues: {
@@ -293,8 +289,8 @@ export function UploadPane() {
             registry: env.DOCKER_UPLOAD_REGISTRY || '',
             repo: "",
             tag: "",
-            username: env.DOCKER_UPLOAD_USERNAME || '',
-            password: env.DOCKER_UPLOAD_PASSWORD || ''
+            username: '',
+            password: ''
         },
         validate: {
             registry: (v) => v=="" ? "レジストリを指定してください" : null,
@@ -420,12 +416,8 @@ export function UploadPane() {
             setEnv({
                 DOCKER_UPLOAD: v.DOCKER_UPLOAD,
                 DOCKER_UPLOAD_REGISTRY: v.DOCKER_UPLOAD_REGISTRY,
-                DOCKER_UPLOAD_USERNAME: v.DOCKER_UPLOAD_USERNAME,
-                DOCKER_UPLOAD_PASSWORD: v.DOCKER_UPLOAD_PASSWORD
             })
             form.setFieldValue("registry", v.DOCKER_UPLOAD_REGISTRY);
-            form.setFieldValue("username", v.DOCKER_UPLOAD_USERNAME);
-            form.setFieldValue("password", v.DOCKER_UPLOAD_PASSWORD);
         });
         return () => {
             if (flushTimerRef.current) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null; }

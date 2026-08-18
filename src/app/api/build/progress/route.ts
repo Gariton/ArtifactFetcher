@@ -1,17 +1,27 @@
 import { NextRequest } from 'next/server';
 import { ProgressBus, globalBusMap } from '@/lib/progressBus';
+import { jobStore } from '@/lib/jobStore';
+import { isValidJobId } from '@/lib/inputSafety';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const parsedSseLifetime = Number(process.env.SSE_MAX_CONNECTION_MS);
+const SSE_MAX_CONNECTION_MS = Number.isSafeInteger(parsedSseLifetime) && parsedSseLifetime > 0
+    ? parsedSseLifetime
+    : 30 * 60 * 1000;
+
 export const GET = async (req: NextRequest) => {
     const { searchParams } = new URL(req.url);
     const jobId = searchParams.get('jobId') || '';
-    if (!jobId) return new Response('Bad Request', { status: 400 });
+    if (!isValidJobId(jobId)) return new Response('Bad Request', { status: 400 });
 
     // アップロード系のジョブはクライアントが先に SSE へ接続し、その後に
-    // upload-multi などの POST がバスを生成する。接続が先行してもよいよう、
-    // バスが未生成ならここで作成しておく（POST 側は get() で同じバスを再利用する）。
+    // POST するため、正しい nanoid のみ短寿命の queued ジョブとして予約する。
+    // JobStore の上限と queued TTL により任意 jobId で Bus が無制限に増えない。
+    const job = jobStore.get(jobId) ?? jobStore.reserve(jobId);
+    if (!job) return new Response('Too Many Jobs', { status: 503 });
+
     let bus = globalBusMap.get(jobId);
     if (!bus) {
         bus = new ProgressBus();
@@ -36,12 +46,20 @@ export const GET = async (req: NextRequest) => {
             bus.on('progress', handler);
 
             const hb = setInterval(() => push(': ping\n\n'), 15000);
+            let closed = false;
             const abort = () => {
+                if (closed) return;
+                closed = true;
                 clearInterval(hb);
+                clearTimeout(maxLifetime);
                 bus.removeListener('progress', handler);
-                controller.close();
+                bus.removeListener('close', abort);
+                try { controller.close(); } catch {}
             }
-            req.signal.addEventListener('abort', abort);
+            const maxLifetime = setTimeout(abort, SSE_MAX_CONNECTION_MS);
+            bus.on('close', abort);
+            req.signal.addEventListener('abort', abort, { once: true });
+            if (req.signal.aborted) abort();
         },
     });
         

@@ -7,6 +7,7 @@ import {
 } from '@/lib/gitlab/downloader';
 import { ProgressBus, globalBusMap } from '@/lib/progressBus';
 import { logRequest } from '@/lib/requestLog';
+import { makeArtifactObjectKey } from '@/lib/storage/s3';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -48,13 +49,13 @@ export async function POST(req: NextRequest) {
 
     logRequest(req, 'gitlab:start');
     const jobId = nanoid();
-    const objectKey = `${jobId}/${target === 'archive'
+    const objectKey = makeArtifactObjectKey(jobId, target === 'archive'
         ? 'gitlab-repository.zip'
         : assetNames.length > 1
             ? 'gitlab-release-assets.tar'
-            : 'gitlab-release-asset'}`;
+            : 'gitlab-release-asset');
     const bus = new ProgressBus();
-    jobStore.set(jobId, { status: 'queued' });
+    if (!jobStore.create(jobId)) return Response.json({ error: 'job capacity exceeded' }, { status: 503 });
     globalBusMap.set(jobId, bus);
     bus.emitEvent({ type: 'stage', stage: 'queued' });
 

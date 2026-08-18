@@ -1,9 +1,6 @@
 #!/usr/bin/env node
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { usage, postJSON, sse, downloadToFile, ensureBar, updateBar } from './utils.mjs';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const args = process.argv.slice(2);
 if (args.length < 3) { usage(); process.exit(1); }

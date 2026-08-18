@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommandInput, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, PutObjectCommandInput, S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 
 export type S3Config = {
@@ -101,6 +101,46 @@ export async function deleteS3Object(key: string) {
     const client = getClient();
     const cfg = resolveConfig();
     await client.send(new DeleteObjectCommand({ Bucket: cfg.bucket, Key: key }));
+}
+
+export function isS3Configured(): boolean {
+    return Boolean(process.env.S3_BUCKET && process.env.S3_ACCESS_KEY_ID && process.env.S3_SECRET_ACCESS_KEY);
+}
+
+function artifactPrefix(): string {
+    const configured = (process.env.S3_OBJECT_PREFIX || 'artifact-fetcher/').trim().replace(/^\/+/, '');
+    const safe = configured.replace(/[^A-Za-z0-9._/-]/g, '-').replace(/\/{2,}/g, '/');
+    const resolved = safe || 'artifact-fetcher';
+    return resolved.endsWith('/') ? resolved : `${resolved}/`;
+}
+
+export function makeArtifactObjectKey(jobId: string, filename: string): string {
+    const safeFilename = filename.replace(/[\\/\0]/g, '_');
+    return `${artifactPrefix()}${jobId}/${safeFilename}`;
+}
+
+/** Remove expired objects independently of the in-memory JobStore. */
+export async function cleanupExpiredS3Artifacts(maxAgeMs: number): Promise<number> {
+    const client = getClient();
+    const cfg = resolveConfig();
+    const cutoff = Date.now() - maxAgeMs;
+    let continuationToken: string | undefined;
+    let deleted = 0;
+    do {
+        const page = await client.send(new ListObjectsV2Command({
+            Bucket: cfg.bucket,
+            Prefix: artifactPrefix(),
+            ContinuationToken: continuationToken,
+            MaxKeys: 1000,
+        }));
+        for (const object of page.Contents || []) {
+            if (!object.Key || !object.LastModified || object.LastModified.getTime() > cutoff) continue;
+            await client.send(new DeleteObjectCommand({ Bucket: cfg.bucket, Key: object.Key }));
+            deleted += 1;
+        }
+        continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
+    } while (continuationToken);
+    return deleted;
 }
 
 export function getS3BucketName() {

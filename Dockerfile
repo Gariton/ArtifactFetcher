@@ -1,20 +1,19 @@
 # =========================
 # 0) base: Node + Python3/pip/twine 共通ベース
 # =========================
-FROM node:24.5-trixie-slim AS base
+FROM node:24.15-trixie-slim AS base
 
 # 必要ツールの導入（Debian パッケージで揃えるのが安全）
 # - python3, python3-pip, python3-venv
 # - python3-twine: twine CLI（PyPI ではなく Debian パッケージで導入）
 # - ca-certificates: TLS
 # - git: npm/pip で git 依存を取る可能性に配慮（不要なら削ってOK）
-# - curl: rpmアップロード時のHTTP転送に利用
 # - dnf/dnf5 + plugins + rpm: rpmダウンロード機能に必要
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         python3 python3-pip python3-venv twine \
-        ca-certificates git curl \
+        ca-certificates git \
         dnf rpm; \
     apt-get install -y --no-install-recommends dnf-plugins-core || true; \
     apt-get install -y --no-install-recommends dnf5 dnf5-plugins || true; \
@@ -62,9 +61,9 @@ COPY --chown=nextjs:nextjs --from=builder /app/.next/standalone ./
 COPY --chown=nextjs:nextjs --from=builder /app/.next/static ./.next/static
 COPY --chown=nextjs:nextjs --from=builder /app/public ./public
 
-# 健康チェック（任意: /api/health があれば差し替え）
+# 認証設定の影響を受けない最小ヘルスチェック
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:3000').then(r=>{if(r.ok)process.exit(0);process.exit(1)}).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(r.ok)process.exit(0);process.exit(1)}).catch(()=>process.exit(1))"
 
 EXPOSE 3000
 

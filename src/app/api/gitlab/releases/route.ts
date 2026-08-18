@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { readGitLabRuntimeConfig } from '@/lib/gitlab/config';
 import { listGitLabReleases } from '@/lib/gitlab/downloader';
 import { logRequest } from '@/lib/requestLog';
 
@@ -9,7 +10,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => null);
     const project = typeof body?.project === 'string' ? body.project.trim() : '';
     const requestToken = typeof body?.token === 'string' ? body.token.trim() : '';
-    const baseUrl = process.env.GITLAB_BASE_URL?.trim() || '';
+    const { baseUrl, token: configuredToken } = readGitLabRuntimeConfig();
 
     if (!baseUrl) return Response.json({ error: 'GITLAB_BASE_URLが設定されていません' }, { status: 503 });
     if (!project) return Response.json({ error: 'プロジェクトIDまたはパスを入力してください' }, { status: 400 });
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
         const releases = await listGitLabReleases({
             baseUrl,
             project,
-            token: requestToken || process.env.GITLAB_TOKEN,
+            token: requestToken || configuredToken,
         });
         return Response.json({ releases });
     } catch (error) {

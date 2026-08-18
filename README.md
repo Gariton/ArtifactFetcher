@@ -167,6 +167,13 @@ services:
     env_file: [.env.production]
 ```
 
+`.env` / `env_file` はプロセスまたはコンテナの起動時に読み込まれます。値を変更した後は、開発サーバーを
+再起動してください。Docker Compose の既存コンテナには後から反映されないため、次のように再作成します。
+
+```bash
+docker compose -f production.yaml up -d --force-recreate
+```
+
 ---
 
 ## 使い方

@@ -21,7 +21,5 @@ export async function getEnvironmentVar() {
         RPM_UPLOAD_METHOD: process.env.RPM_UPLOAD_METHOD ?? "put",
         RPM_UPLOAD_IGNORE_TLS_VERIFY: process.env.RPM_UPLOAD_IGNORE_TLS_VERIFY ?? "false",
 
-        GITLAB_BASE_URL: process.env.GITLAB_BASE_URL ?? "",
-        GITLAB_TOKEN_CONFIGURED: process.env.GITLAB_TOKEN ? "yes" : "no",
     }
 }

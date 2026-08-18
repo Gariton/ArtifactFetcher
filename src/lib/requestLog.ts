@@ -22,7 +22,6 @@ function extractIp(req: NextRequest): string {
     }
     const realIp = req.headers.get('x-real-ip');
     if (realIp) return realIp;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const reqIp = (req as any).ip as string | undefined;
     if (reqIp) return reqIp;
     return 'unknown';

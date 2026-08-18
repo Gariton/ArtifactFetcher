@@ -2,11 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
-import axios, { AxiosRequestConfig } from 'axios';
+import axios, { type AxiosProgressEvent } from 'axios';
 import * as tar from 'tar';
 import { ProgressBus } from '@/lib/progressBus';
 import { Agent as HttpsAgent } from 'https';
 import os from 'node:os';
+import { assertDockerRepository, assertDockerTag, resolveWithin } from '@/lib/inputSafety';
+import { assertFileSize, assertItemCount, ByteBudget } from '@/lib/resourceLimits';
+import { MAX_DOCKER_MANIFEST_BYTES } from '@/lib/docker/readDockerLoadManifest';
 
 export type PushOptions = {
     registry: string;           // e.g. https://nexus.example.com
@@ -40,14 +43,109 @@ function axiosClient(baseURL: string, insecureTLS?: boolean, extraHeaders?: Reco
         headers: { ...(extraHeaders || {}) },
         maxContentLength: Infinity,
         maxBodyLength: Infinity,
+        maxRedirects: 0,
         validateStatus: (s) => (s >= 200 && s < 500),
     });
 }
 
-async function ensureDirFromTar(tarPath: string): Promise<string> {
+export function resolveDockerUploadLocation(rawLocation: string, registryBase: string): string {
+    const base = new URL(registryBase);
+    let resolved: URL;
+    try {
+        const directoryBase = base.toString().endsWith('/') ? base.toString() : `${base.toString()}/`;
+        resolved = new URL(rawLocation, directoryBase);
+    } catch {
+        throw new Error('registry returned an invalid upload location');
+    }
+    if (!['http:', 'https:'].includes(resolved.protocol)) {
+        throw new Error('registry returned an unsupported upload location');
+    }
+
+    const wantPrefix = base.pathname.replace(/\/+$/, '');
+    if (resolved.pathname.startsWith('/v2/') && wantPrefix) {
+        resolved.pathname = `${wantPrefix}${resolved.pathname}`;
+    }
+
+    // Never allow a registry response to redirect upload credentials or layer data
+    // to a different origin. Nexus may advertise its internal host in Location.
+    resolved.protocol = base.protocol;
+    resolved.host = base.host;
+    resolved.username = '';
+    resolved.password = '';
+    resolved.hash = '';
+    return resolved.toString();
+}
+
+export function normalizeDockerRegistryUrl(raw: string, hasCredentials = false): string {
+    let url: URL;
+    try { url = new URL(raw.trim()); }
+    catch { throw new Error('Docker registry URL is invalid'); }
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+        throw new Error('Docker registry URL must be HTTP(S) without credentials, query, or fragment');
+    }
+    if (hasCredentials && url.protocol !== 'https:') {
+        throw new Error('Docker registry credentials require an HTTPS registry URL');
+    }
+    return url.toString();
+}
+
+export async function extractDockerArchive(tarPath: string): Promise<string> {
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'push-'));
-    await tar.x({ file: tarPath, cwd: temp, sync: true });
-    return temp;
+    try {
+        let entries = 0;
+        const budget = new ByteBudget();
+        let validationError: Error | undefined;
+        await tar.x({
+            file: tarPath,
+            cwd: temp,
+            strict: true,
+            preservePaths: false,
+            filter: (entryPath, entry) => {
+                if (validationError) return false;
+                try {
+                    const normalized = entryPath.replace(/^(\.\/)+/, '');
+                    if (path.isAbsolute(normalized) || normalized.split(/[\\/]/).includes('..')) {
+                        throw new Error(`unsafe path in Docker archive: ${entryPath}`);
+                    }
+                    entries += 1;
+                    assertItemCount(entries, 'Docker archive entry');
+                    const size = Number(entry?.size || 0);
+                    assertFileSize(size || undefined, `Docker archive entry ${entryPath}`);
+                    if (normalized === 'manifest.json' && size > MAX_DOCKER_MANIFEST_BYTES) {
+                        throw new Error(`Docker manifest exceeds ${MAX_DOCKER_MANIFEST_BYTES} bytes`);
+                    }
+                    budget.consume(size, 'Docker archive');
+                    const entryType = entry && 'type' in entry ? entry.type : undefined;
+                    if (!entryType || !['File', 'OldFile', 'Directory'].includes(entryType)) {
+                        throw new Error(`unsupported link or special entry in Docker archive: ${entryPath}`);
+                    }
+                    return true;
+                } catch (error) {
+                    validationError = error instanceof Error ? error : new Error('invalid Docker archive');
+                    return false;
+                }
+            },
+        });
+        if (validationError) throw validationError;
+        return temp;
+    } catch (error) {
+        try { fs.rmSync(temp, { recursive: true, force: true }); } catch {}
+        throw error;
+    }
+}
+
+function resolveRegularFileWithin(root: string, relativePath: string): string {
+    const candidate = resolveWithin(root, relativePath);
+    const rootReal = fs.realpathSync(root);
+    const stat = fs.lstatSync(candidate);
+    if (!stat.isFile() || stat.isSymbolicLink()) {
+        throw new Error(`Docker archive reference is not a regular file: ${relativePath}`);
+    }
+    const real = fs.realpathSync(candidate);
+    if (real !== rootReal && !real.startsWith(`${rootReal}${path.sep}`)) {
+        throw new Error(`Docker archive reference escapes extraction root: ${relativePath}`);
+    }
+    return real;
 }
 
 async function sha256File(filePath: string): Promise<string> {
@@ -81,63 +179,39 @@ async function pushBlob(c: any, repo: string, tag: string, digest: string, file:
     // Location may be absolute or relative
     // const uploadUrl = new URL(init.headers['location'], c.defaults.baseURL).toString();
 
-    const rawLocation = init.headers['location'];           // 例: /v2/...  or http://127.0.0.1:8081/v2/...
-    const base = new URL(c.defaults.baseURL);               // 例: https://nexus/repository/docker-hub-clone
-    // registry URL のパス部分を抽出する（例: /repository/docker-hub-clone）。
-    // Nexus が Location を /v2/... だけで返す場合に、この prefix を補って
-    // 正しいアップロード先 URL を組み立てる。リポジトリ名を固定しないこと。
-    const wantPrefix = base.pathname.replace(/\/+$/, '');
-
-    let uploadUrl: string;
-    if (/^https?:\/\//i.test(rawLocation)) {
-        // フルURLで返ってきた場合：ホスト/プロトコルを前段に合わせ、パスを補正
-        const u = new URL(rawLocation);
-        // Location が /v2/... だけを返す実装なら、prefix を付ける
-        if (u.pathname.startsWith('/v2/')) {
-            u.pathname = `${wantPrefix}${u.pathname}`;          // /repository/docker-hub-clone/v2/...
-        }
-        u.protocol = base.protocol; u.host = base.host;
-        uploadUrl = u.toString();
-    } else {
-        // 相対で返ってきた場合
-        const u = new URL(rawLocation, base);
-        if (u.pathname.startsWith('/v2/')) {
-            u.pathname = `${wantPrefix}${u.pathname}`;
-        }
-        uploadUrl = u.toString();
-    }
+    const uploadUrl = resolveDockerUploadLocation(init.headers['location'], c.defaults.baseURL);
     
     // PATCH (stream data)
     const stat = fs.statSync(file);
     bus.emitEvent({ type: 'item-start', scope: 'push-item', manifestName: `${repo}@${tag}`, index, digest, total: stat.size });
     const stream = fs.createReadStream(file);
-    const patch = await axios.request({
+    const patch = await c.request({
         method: 'PATCH', url: uploadUrl,
         headers: { 'Content-Type': 'application/octet-stream', ...headers },
         data: stream,
         maxBodyLength: Infinity,
         maxContentLength: Infinity,
-        onUploadProgress: (p) => {
+        onUploadProgress: (p: AxiosProgressEvent) => {
             const received = p.loaded || 0;
             bus.emitEvent({ type: 'item-progress', scope: 'push-item', manifestName: `${repo}@${tag}`, index, received, total: stat.size });
         },
-        validateStatus: s => s >= 200 && s < 500,
-    } as AxiosRequestConfig);
-    if (patch.status !== 202) throw new Error(`patch failed: ${patch.status}`);
-    
-    // finalize with digest
-    const sep = uploadUrl.includes('?') ? '&' : '?';
-    const put = await axios.request({
-        method: 'PUT',
-        url: `${uploadUrl}${sep}digest=${encodeURIComponent(digest)}`,
-        headers: { ...headers },
-        validateStatus: s => s >= 200 && s < 500,
+        maxRedirects: 0,
+        validateStatus: (s: number) => s >= 200 && s < 500,
     });
-    // const put = await axios.request({
-    //     method: 'PUT', url: `${uploadUrl}&digest=${encodeURIComponent(digest)}`,
-    //     headers: { ...headers },
-    //     validateStatus: s => s >= 200 && s < 500,
-    // } as AxiosRequestConfig);
+    if (patch.status !== 202) throw new Error(`patch failed: ${patch.status}`);
+
+    // finalize with digest
+    const finalizeUrl = patch.headers.location
+        ? resolveDockerUploadLocation(patch.headers.location, c.defaults.baseURL)
+        : uploadUrl;
+    const sep = finalizeUrl.includes('?') ? '&' : '?';
+    const put = await c.request({
+        method: 'PUT',
+        url: `${finalizeUrl}${sep}digest=${encodeURIComponent(digest)}`,
+        headers: { ...headers },
+        maxRedirects: 0,
+        validateStatus: (s: number) => s >= 200 && s < 500,
+    });
     if (put.status !== 201) throw new Error(`finalize failed: ${put.status}`);
     bus.emitEvent({ type: 'item-done', scope: 'push-item', manifestName: `${repo}@${tag}`, index });
 }
@@ -150,72 +224,88 @@ async function putManifest(c: any, repo: string, tag: string, manifest: any, hea
 }
 
 export async function pushImageToRegistry(opts: PushOptions) {
-    const { registry, repository, tag, sourceTarPath, sourceDir, username, password, insecureTLS, bus } = opts;
+    const { sourceTarPath, sourceDir, username, password, insecureTLS, bus } = opts;
+    const registryUrl = new URL(normalizeDockerRegistryUrl(opts.registry, Boolean(username || password)));
+    const repository = assertDockerRepository(opts.repository);
+    const tag = assertDockerTag(opts.tag);
     bus.emitEvent({ type: 'stage', stage: 'prepare' });
     
     // materialize input
     let workDir = sourceDir;
+    let ownsWorkDir = false;
     if (!workDir) {
         if (!sourceTarPath) throw new Error('sourceTarPath or sourceDir is required');
-        workDir = await ensureDirFromTar(sourceTarPath);
+        workDir = await extractDockerArchive(sourceTarPath);
+        ownsWorkDir = true;
     }
-    
-    // load manifest.json (docker load format)
-    const manifestPath = path.join(workDir!, 'manifest.json');
-    const manifestArr = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Array<{
-        Config: string;
-        RepoTags: string[];
-        Layers: string[];
-    }>;
-    if (!Array.isArray(manifestArr) || manifestArr.length === 0) throw new Error('invalid manifest.json');
-    const m0 = manifestArr[0];
-    
-    // compute digests (config + each layer)
-    bus.emitEvent({ type: 'stage', stage: 'hashing' });
-    const configPath = path.join(workDir!, m0.Config);
-    const configDigest = await sha256File(configPath);
-    const layerFiles = m0.Layers.map(l => path.join(workDir!, l));
-    const layerDigests: string[] = [];
-    for (let i = 0; i < layerFiles.length; i++) layerDigests.push(await sha256File(layerFiles[i]));
-    
-    const layers = layerFiles.map((f, i) => ({
-        mediaType: MEDIA.LAYER,
-        size: fs.statSync(f).size,
-        digest: layerDigests[i],
-    }))
 
-    // build OCI manifest (schema2)
-    const manifest = {
-        schemaVersion: 2,
-        mediaType: MEDIA.MANIFEST,
-        config: {
-            mediaType: MEDIA.CONFIG,
-            size: fs.statSync(configPath).size,
-            digest: configDigest,
-        },
-        layers
-    };
-    
-    // client
-    const baseURL = registry.replace(/\/$/, '');
-    const c = axiosClient(baseURL, insecureTLS, authHeader(username, password));
-    
-    // ensure /v2/ works (some registries require a ping)
-    const ping = await c.get('/v2/', { headers: authHeader(username, password) });
-    if (!(ping.status === 200)) throw new Error(`/v2 ping failed: ${ping.status}`);
-    
-    // upload config
-    bus.emitEvent({ type: 'stage', stage: 'upload-config' });
-    await pushBlob(c, repository, tag, configDigest, configPath, bus, -1, authHeader(username, password));
-    
-    // upload layers
-    bus.emitEvent({ type: 'manifest-resolved', items: layers, manifestName: `${opts.repository}@${opts.tag}` } as any);
-    for (let i = 0; i < layerFiles.length; i++) {
-        bus.emitEvent({ type: 'stage', stage: `upload-layer-${i}` });
-        await pushBlob(c, repository, tag, layerDigests[i], layerFiles[i], bus, i, authHeader(username, password));
+    try {
+        // load manifest.json (docker load format)
+        const manifestPath = resolveRegularFileWithin(workDir, 'manifest.json');
+        if (fs.statSync(manifestPath).size > MAX_DOCKER_MANIFEST_BYTES) {
+            throw new Error(`Docker manifest exceeds ${MAX_DOCKER_MANIFEST_BYTES} bytes`);
+        }
+        const manifestArr = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Array<{
+            Config: string;
+            RepoTags: string[];
+            Layers: string[];
+        }>;
+        if (!Array.isArray(manifestArr) || manifestArr.length === 0) throw new Error('invalid manifest.json');
+        const m0 = manifestArr[0];
+        if (!m0 || typeof m0.Config !== 'string' || !Array.isArray(m0.Layers)) throw new Error('invalid manifest.json');
+        assertItemCount(m0.Layers.length, 'Docker layer');
+
+        // compute digests (config + each layer)
+        bus.emitEvent({ type: 'stage', stage: 'hashing' });
+        const configPath = resolveRegularFileWithin(workDir, m0.Config);
+        const configDigest = await sha256File(configPath);
+        const layerFiles = m0.Layers.map((layer) => resolveRegularFileWithin(workDir!, layer));
+        const layerDigests: string[] = [];
+        for (let i = 0; i < layerFiles.length; i++) layerDigests.push(await sha256File(layerFiles[i]));
+
+        const layers = layerFiles.map((f, i) => ({
+            mediaType: MEDIA.LAYER,
+            size: fs.statSync(f).size,
+            digest: layerDigests[i],
+        }));
+
+        // build OCI manifest (schema2)
+        const manifest = {
+            schemaVersion: 2,
+            mediaType: MEDIA.MANIFEST,
+            config: {
+                mediaType: MEDIA.CONFIG,
+                size: fs.statSync(configPath).size,
+                digest: configDigest,
+            },
+            layers
+        };
+
+        // client
+        const baseURL = registryUrl.toString().replace(/\/$/, '');
+        const c = axiosClient(baseURL, insecureTLS, authHeader(username, password));
+
+        // ensure /v2/ works (some registries require a ping)
+        const ping = await c.get('/v2/', { headers: authHeader(username, password) });
+        if (!(ping.status === 200)) throw new Error(`/v2 ping failed: ${ping.status}`);
+
+        // upload config
+        bus.emitEvent({ type: 'stage', stage: 'upload-config' });
+        await pushBlob(c, repository, tag, configDigest, configPath, bus, -1, authHeader(username, password));
+
+        // upload layers
+        bus.emitEvent({ type: 'manifest-resolved', items: layers, manifestName: `${opts.repository}@${opts.tag}` } as any);
+        for (let i = 0; i < layerFiles.length; i++) {
+            bus.emitEvent({ type: 'stage', stage: `upload-layer-${i}` });
+            await pushBlob(c, repository, tag, layerDigests[i], layerFiles[i], bus, i, authHeader(username, password));
+        }
+
+        // put manifest (tag)
+        bus.emitEvent({ type: 'stage', stage: 'put-manifest' });
+        await putManifest(c, repository, tag, manifest, authHeader(username, password));
+    } finally {
+        if (ownsWorkDir && workDir) {
+            try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+        }
     }
-    
-    // put manifest (tag)
-    bus.emitEvent({ type: 'stage', stage: 'put-manifest' });
-    await putManifest(c, repository, tag, manifest, authHeader(username, password));
 }

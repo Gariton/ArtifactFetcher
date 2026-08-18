@@ -42,3 +42,62 @@ export function readUploadAuth(headers: Headers): AuthHeaderInput {
         token: decodeHeader(headers.get(REGISTRY_TOKEN_HEADER)),
     };
 }
+
+function hasUploadAuthHeaders(headers: Headers): boolean {
+    return [REGISTRY_USERNAME_HEADER, REGISTRY_PASSWORD_HEADER, REGISTRY_TOKEN_HEADER]
+        .some((name) => headers.has(name));
+}
+
+/**
+ * Server side: use credentials explicitly supplied by the user, or server-side
+ * defaults only when the requested registry is the configured registry.
+ *
+ * Checking the target is important: upload URLs are user controlled, so blindly
+ * attaching environment credentials would disclose them to an attacker-controlled
+ * endpoint. An explicit (even partial) credential set never gets mixed with the
+ * server defaults.
+ */
+export function resolveUploadAuth(
+    headers: Headers,
+    options: {
+        requestedRegistry: string;
+        configuredRegistry?: string;
+        defaults?: AuthHeaderInput;
+    },
+): AuthHeaderInput {
+    if (hasUploadAuthHeaders(headers)) return readUploadAuth(headers);
+    if (!sameRegistryTarget(options.requestedRegistry, options.configuredRegistry)) return {};
+    return compactAuth(options.defaults);
+}
+
+function compactAuth(input?: AuthHeaderInput): AuthHeaderInput {
+    if (!input) return {};
+    const result: AuthHeaderInput = {};
+    if (input.username) result.username = input.username;
+    if (input.password) result.password = input.password;
+    if (input.token) result.token = input.token;
+    return result;
+}
+
+/** Compare registry endpoints while tolerating a trailing slash. */
+export function sameRegistryTarget(requested: string, configured?: string): boolean {
+    const left = normalizeRegistryTarget(requested);
+    const right = normalizeRegistryTarget(configured || '');
+    return Boolean(left && right && left === right);
+}
+
+function normalizeRegistryTarget(value: string): string | null {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    try {
+        const hasScheme = /^[a-z][a-z\d+.-]*:\/\//i.test(trimmed);
+        const url = new URL(hasScheme ? trimmed : `https://${trimmed}`);
+        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
+        url.hash = '';
+        url.search = '';
+        url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+        return url.toString().replace(/\/$/, '');
+    } catch {
+        return null;
+    }
+}

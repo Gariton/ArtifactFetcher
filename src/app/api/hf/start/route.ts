@@ -4,7 +4,7 @@ import { nanoid } from 'nanoid';
 import { jobStore } from '@/lib/jobStore';
 import { ProgressBus, globalBusMap } from '@/lib/progressBus';
 import { buildHfBundle } from '@/lib/hf/downloader';
-import { uploadFileToS3 } from '@/lib/storage/s3';
+import { makeArtifactObjectKey, uploadFileToS3 } from '@/lib/storage/s3';
 import { logRequest } from '@/lib/requestLog';
 
 export const runtime = 'nodejs';
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
 
     const jobId = nanoid();
     const bus = new ProgressBus();
-    jobStore.set(jobId, { status: 'queued' });
+    if (!jobStore.create(jobId)) return Response.json({ error: 'job capacity exceeded' }, { status: 503 });
     globalBusMap.set(jobId, bus);
     bus.emitEvent({ type: 'stage', stage: 'queued' });
 
@@ -53,10 +53,11 @@ export async function POST(req: NextRequest) {
             });
             workRoot = root;
 
-            const objectKey = `${jobId}/${filename}`;
+            const objectKey = makeArtifactObjectKey(jobId, filename);
             bus.emitEvent({ type: 'stage', stage: 'uploading-s3' });
             await uploadFileToS3({ filePath: tarPath, key: objectKey, contentType: 'application/x-tar' });
             jobStore.set(jobId, { status: 'done', filename, objectKey });
+            bus.emitEvent({ type: 'done', filename });
         } catch (err: any) {
             jobStore.set(jobId, { status: 'error', error: err?.message || 'failed' });
             bus.emitEvent({ type: 'error', message: err?.message || 'failed' });

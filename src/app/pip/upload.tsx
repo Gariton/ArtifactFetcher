@@ -13,7 +13,6 @@ import { CarbonForm, CarbonSection, CarbonField, CarbonPassword, CarbonCheckbox,
 import { nanoid } from 'nanoid';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileItem } from '@/components/Upload/FileItem';
-import { getEnvironmentVar } from '@/components/actions';
 
 type Status = 'idle' | 'running' | 'done' | 'error';
 
@@ -26,9 +25,6 @@ type PerFileState = {
 type EnvProps = {
     PIP_UPLOAD: string;
     PIP_UPLOAD_REGISTRY: string;
-    PIP_UPLOAD_USERNAME: string;
-    PIP_UPLOAD_PASSWORD: string;
-    PIP_UPLOAD_TOKEN: string;
     PIP_UPLOAD_SKIP_EXISTING: string;
 };
 
@@ -87,9 +83,9 @@ export function UploadPane({ env }: { env: EnvProps }) {
         initialValues: {
             files: [],
             repositoryUrl: env.PIP_UPLOAD_REGISTRY || '',
-            username: env.PIP_UPLOAD_USERNAME || '',
-            password: env.PIP_UPLOAD_PASSWORD || '',
-            token: env.PIP_UPLOAD_TOKEN || '',
+            username: '',
+            password: '',
+            token: '',
             skipExisting: /^(1|true|on|yes)$/i.test(env.PIP_UPLOAD_SKIP_EXISTING || ''),
             caCert: null,
         },
@@ -372,11 +368,6 @@ export function UploadPane({ env }: { env: EnvProps }) {
     });
 
     useEffect(() => {
-        getEnvironmentVar().then(v => {
-            form.setFieldValue("repositoryUrl", v.PIP_UPLOAD_REGISTRY);
-            form.setFieldValue("username", v.PIP_UPLOAD_USERNAME);
-            form.setFieldValue("password", v.PIP_UPLOAD_PASSWORD);
-        });
         return () => {
             if (flushTimerRef.current) {
                 clearTimeout(flushTimerRef.current);

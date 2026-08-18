@@ -16,9 +16,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 type EnvProps = {
     RPM_UPLOAD: string;
     RPM_UPLOAD_REPOSITORY_URL: string;
-    RPM_UPLOAD_USERNAME: string;
-    RPM_UPLOAD_PASSWORD: string;
-    RPM_UPLOAD_TOKEN: string;
     RPM_UPLOAD_METHOD: string;
     RPM_UPLOAD_IGNORE_TLS_VERIFY: string;
 };
@@ -74,9 +71,9 @@ export function UploadPane({ env }: { env: EnvProps }) {
         initialValues: {
             files: [],
             repositoryUrl: env.RPM_UPLOAD_REPOSITORY_URL || '',
-            username: env.RPM_UPLOAD_USERNAME || '',
-            password: env.RPM_UPLOAD_PASSWORD || '',
-            token: env.RPM_UPLOAD_TOKEN || '',
+            username: '',
+            password: '',
+            token: '',
             method: env.RPM_UPLOAD_METHOD === 'post' ? 'post' : 'put',
             ignoreTlsVerify: ['1', 'true', 'yes', 'on'].includes((env.RPM_UPLOAD_IGNORE_TLS_VERIFY || '').toLowerCase()),
         },
@@ -206,7 +203,7 @@ export function UploadPane({ env }: { env: EnvProps }) {
                         <CarbonPassword label="Password" optional value={form.getValues().password} onChange={(v) => form.setFieldValue('password', v)} placeholder="password" disabled={loading} />
                     </div>
                     <CarbonPassword label="Bearer Token" optional icon={IconKey} value={form.getValues().token} onChange={(v) => form.setFieldValue('token', v)} placeholder="token" disabled={loading} />
-                    <CarbonCheckbox checked={form.getValues().ignoreTlsVerify} onChange={(c) => form.setFieldValue('ignoreTlsVerify', c)} label="証明書の検証を無視する (curl --insecure)" disabled={loading} />
+                    <CarbonCheckbox checked={form.getValues().ignoreTlsVerify} onChange={(c) => form.setFieldValue('ignoreTlsVerify', c)} label="証明書の検証を無視する（非推奨）" disabled={loading} />
                 </CarbonAuthPanel>
 
                 <CarbonSection>

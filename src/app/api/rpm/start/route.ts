@@ -3,8 +3,8 @@ import fs from 'node:fs/promises';
 import { nanoid } from 'nanoid';
 import { jobStore } from '@/lib/jobStore';
 import { ProgressBus, globalBusMap } from '@/lib/progressBus';
-import { buildRpmBundle, RPM_REPO_PRESETS, type RpmRepository } from '@/lib/rpm/downloader';
-import { uploadFileToS3 } from '@/lib/storage/s3';
+import { buildRpmBundle, normalizeRpmBaseUrl, RPM_REPO_PRESETS, type RpmRepository } from '@/lib/rpm/downloader';
+import { makeArtifactObjectKey, uploadFileToS3 } from '@/lib/storage/s3';
 import { logRequest } from '@/lib/requestLog';
 
 export const runtime = 'nodejs';
@@ -16,21 +16,38 @@ function normalizeCustomRepositories(input: unknown): RpmRepository[] {
     const customRepos: RpmRepository[] = [];
     for (let i = 0; i < input.length; i += 1) {
         const entry = input[i] as Record<string, unknown>;
-        const baseUrl = typeof entry?.baseUrl === 'string' ? entry.baseUrl.trim() : '';
-        if (!baseUrl) continue;
-        if (!/^https?:\/\//i.test(baseUrl)) {
-            throw new Error(`customRepositories[${i}] baseUrl must start with http:// or https://`);
+        const baseUrlRaw = typeof entry?.baseUrl === 'string' ? entry.baseUrl.trim() : '';
+        if (!baseUrlRaw) continue;
+        let baseUrl: string;
+        try { baseUrl = normalizeRpmBaseUrl(baseUrlRaw); }
+        catch (error) {
+            throw new Error(`customRepositories[${i}] ${(error as Error).message}`);
         }
 
         const idRaw = typeof entry?.id === 'string' ? entry.id.trim() : '';
         const labelRaw = typeof entry?.label === 'string' ? entry.label.trim() : '';
         const folderRaw = typeof entry?.folderName === 'string' ? entry.folderName.trim() : '';
+        const gpgKeyUrl = typeof entry?.gpgKeyUrl === 'string' ? entry.gpgKeyUrl.trim() : '';
         const generated = `custom-repo-${i + 1}`;
+        const id = idRaw || generated;
+        if (!/^[A-Za-z0-9_.:-]+$/.test(id)) {
+            throw new Error(`customRepositories[${i}] id contains unsupported characters`);
+        }
+        let parsedGpgKeyUrl: URL;
+        try {
+            parsedGpgKeyUrl = new URL(gpgKeyUrl);
+        } catch {
+            throw new Error(`customRepositories[${i}] gpgKeyUrl is invalid`);
+        }
+        if (parsedGpgKeyUrl.protocol !== 'https:' || parsedGpgKeyUrl.username || parsedGpgKeyUrl.password || parsedGpgKeyUrl.search || parsedGpgKeyUrl.hash) {
+            throw new Error(`customRepositories[${i}] gpgKeyUrl must be a public HTTPS URL without credentials or query parameters`);
+        }
         customRepos.push({
-            id: idRaw || generated,
+            id,
             label: labelRaw || idRaw || generated,
             folderName: folderRaw || labelRaw || idRaw || generated,
             baseUrl: baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`,
+            gpgKeyUrl,
         });
     }
     return customRepos;
@@ -54,7 +71,11 @@ export async function POST(req: NextRequest) {
     let repositories: RpmRepository[];
     try {
         const presetRepos = RPM_REPO_PRESETS.filter((repo) => repositoryIds.includes(repo.id));
-        const customRepos = normalizeCustomRepositories(body.customRepositories).map((repo) => (
+        const normalizedCustomRepos = normalizeCustomRepositories(body.customRepositories);
+        if ((username || password) && new Set(normalizedCustomRepos.map((repo) => new URL(repo.baseUrl).origin)).size > 1) {
+            throw new Error('one RPM credential set cannot be sent to custom repositories on multiple origins; use separate jobs');
+        }
+        const customRepos = normalizedCustomRepos.map((repo) => (
             (username || password) ? { ...repo, username, password } : repo
         ));
         const usedIds = new Set<string>();
@@ -78,7 +99,7 @@ export async function POST(req: NextRequest) {
 
     const jobId = nanoid();
     const bus = new ProgressBus();
-    jobStore.set(jobId, { status: 'queued' });
+    if (!jobStore.create(jobId)) return Response.json({ error: 'job capacity exceeded' }, { status: 503 });
     globalBusMap.set(jobId, bus);
     bus.emitEvent({ type: 'stage', stage: 'queued' });
     bus.emitEvent({ type: 'log', level: 'info', message: `ジョブを受け付けました: ${jobId}` });
@@ -98,12 +119,13 @@ export async function POST(req: NextRequest) {
                 bus,
             });
             workRoot = root;
-            const objectKey = `${jobId}/${filename}`;
+            const objectKey = makeArtifactObjectKey(jobId, filename);
             bus.emitEvent({ type: 'stage', stage: 'uploading-s3' });
             bus.emitEvent({ type: 'log', level: 'info', message: 'S3へアップロード中です。' });
             await uploadFileToS3({ filePath: tarPath, key: objectKey, contentType: 'application/x-tar' });
             jobStore.set(jobId, { status: 'done', filename, objectKey });
             bus.emitEvent({ type: 'log', level: 'info', message: 'RPMバンドルの生成が完了しました。' });
+            bus.emitEvent({ type: 'done', filename });
         } catch (err: any) {
             jobStore.set(jobId, { status: 'error', error: err?.message || 'failed' });
             bus.emitEvent({ type: 'error', message: err?.message || 'failed' });

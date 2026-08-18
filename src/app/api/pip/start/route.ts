@@ -4,26 +4,12 @@ import { nanoid } from 'nanoid';
 import { jobStore } from '@/lib/jobStore';
 import { ProgressBus, globalBusMap } from '@/lib/progressBus';
 import { buildPipBundle } from '@/lib/pip/downloader';
-import { uploadFileToS3 } from '@/lib/storage/s3';
+import { makeArtifactObjectKey, uploadFileToS3 } from '@/lib/storage/s3';
 import { logRequest } from '@/lib/requestLog';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
-
-// index URL に Basic 認証情報を埋め込む（pip は URL 内の userinfo を認証に使う）。
-// ユーザー名が無くトークンのみの場合は PyPI 慣習に倣い __token__ を使う。
-function injectCredentials(rawUrl: string, username?: string, password?: string): string {
-    if (!username && !password) return rawUrl;
-    try {
-        const u = new URL(rawUrl);
-        u.username = username || (password ? '__token__' : '');
-        u.password = password || '';
-        return u.toString();
-    } catch {
-        return rawUrl;
-    }
-}
 
 export async function POST(req: NextRequest) {
     const body = await req.json();
@@ -42,7 +28,7 @@ export async function POST(req: NextRequest) {
 
     const jobId = nanoid();
     const bus = new ProgressBus();
-    jobStore.set(jobId, { status: 'queued' });
+    if (!jobStore.create(jobId)) return Response.json({ error: 'job capacity exceeded' }, { status: 503 });
     globalBusMap.set(jobId, bus);
     bus.emitEvent({ type: 'stage', stage: 'queued' });
 
@@ -52,27 +38,23 @@ export async function POST(req: NextRequest) {
         let workRoot: string | undefined;
         try {
             jobStore.set(jobId, { status: 'running' });
-            const pipArgs: string[] = [];
-            if (indexUrl) pipArgs.push('--index-url', injectCredentials(indexUrl, username, password));
-            if (extraIndexUrls.length) {
-                for (const url of extraIndexUrls) pipArgs.push('--extra-index-url', injectCredentials(url, username, password));
-            }
-            if (trustedHosts.length) {
-                for (const host of trustedHosts) pipArgs.push('--trusted-host', host);
-            }
-
             const { tarPath, filename, workRoot: root } = await buildPipBundle({
                 specs: packages,
                 requirementsText,
                 bundleName,
-                pipArgs,
+                indexUrl,
+                extraIndexUrls,
+                trustedHosts,
+                username,
+                password,
                 bus,
             });
             workRoot = root;
-            const objectKey = `${jobId}/${filename}`;
+            const objectKey = makeArtifactObjectKey(jobId, filename);
             bus.emitEvent({ type: 'stage', stage: 'uploading-s3' });
             await uploadFileToS3({ filePath: tarPath, key: objectKey, contentType: 'application/x-tar' });
             jobStore.set(jobId, { status: 'done', filename, objectKey });
+            bus.emitEvent({ type: 'done', filename });
         } catch (err: any) {
             jobStore.set(jobId, { status: 'error', error: err?.message || 'failed' });
             bus.emitEvent({ type: 'error', message: err?.message || 'failed' });

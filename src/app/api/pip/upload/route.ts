@@ -5,39 +5,80 @@ import path from 'node:path';
 import Busboy from 'busboy';
 import { jobStore } from '@/lib/jobStore';
 import { ProgressBus, globalBusMap } from '@/lib/progressBus';
-import { uploadDistribution } from '@/lib/pip/publish';
+import { normalizePipRepositoryUrl, uploadDistribution } from '@/lib/pip/publish';
 import { logRequest } from '@/lib/requestLog';
-import { readUploadAuth } from '@/lib/authHeaders';
+import { resolveUploadAuth } from '@/lib/authHeaders';
+import { requireUploadAccess } from '@/lib/requestSecurity';
+import { isValidJobId } from '@/lib/inputSafety';
+import { RESOURCE_LIMITS } from '@/lib/resourceLimits';
+import { waitForDrain } from '@/lib/streamSafety';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
+    const accessFailure = requireUploadAccess(req, 'pip');
+    if (accessFailure) return accessFailure;
+
     const { searchParams } = new URL(req.url);
     const jobId = searchParams.get('jobId');
-    const repositoryUrl = searchParams.get('repositoryUrl')?.trim() || searchParams.get('registryUrl')?.trim() || '';
-    const { username, password, token } = readUploadAuth(req.headers);
+    const repositoryUrlRaw = searchParams.get('repositoryUrl')?.trim() || searchParams.get('registryUrl')?.trim() || '';
+    let repositoryUrl: string;
+    try { repositoryUrl = normalizePipRepositoryUrl(repositoryUrlRaw); }
+    catch (error) { return Response.json({ error: (error as Error).message }, { status: 400 }); }
+    const { username, password, token } = resolveUploadAuth(req.headers, {
+        requestedRegistry: repositoryUrl,
+        configuredRegistry: process.env.PIP_UPLOAD_REGISTRY,
+        defaults: {
+            username: process.env.PIP_UPLOAD_USERNAME,
+            password: process.env.PIP_UPLOAD_PASSWORD,
+            token: process.env.PIP_UPLOAD_TOKEN,
+        },
+    });
     const skipExisting = (searchParams.get('skipExisting') || '').toLowerCase() === 'true';
 
-    if (!jobId) {
+    if (!isValidJobId(jobId)) {
         return new Response(JSON.stringify({ error: 'missing jobId' }), { status: 400 });
     }
-    if (!repositoryUrl) {
-        return new Response(JSON.stringify({ error: 'missing repositoryUrl' }), { status: 400 });
-    }
+    try { normalizePipRepositoryUrl(repositoryUrl, Boolean(username || password || token)); }
+    catch (error) { return Response.json({ error: (error as Error).message }, { status: 400 }); }
     if (!req.body) {
         return new Response(JSON.stringify({ error: 'no body' }), { status: 400 });
+    }
+    const contentType = req.headers.get('content-type') || '';
+    if (!contentType.toLowerCase().startsWith('multipart/form-data')) {
+        return Response.json({ error: 'content-type must be multipart/form-data' }, { status: 400 });
+    }
+    const contentLength = Number(req.headers.get('content-length') || 0);
+    if (contentLength > RESOURCE_LIMITS.maxUploadBytes) {
+        return Response.json({ error: `upload size exceeds limit (${RESOURCE_LIMITS.maxUploadBytes} bytes)` }, { status: 413 });
+    }
+    let bb: ReturnType<typeof Busboy>;
+    try {
+        bb = Busboy({
+            headers: { 'content-type': contentType },
+            limits: { files: RESOURCE_LIMITS.maxUploadFiles + 1, fileSize: RESOURCE_LIMITS.maxSingleFileBytes },
+        });
+    } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : 'invalid multipart request' }, { status: 400 });
+    }
+    if (!jobStore.claim(jobId)) {
+        return Response.json({ error: 'job capacity exceeded or jobId is already in use' }, { status: 503 });
     }
 
     logRequest(req, `pip:upload job=${jobId} -> ${repositoryUrl}`);
 
     const bus = globalBusMap.get(jobId) ?? new ProgressBus();
     globalBusMap.set(jobId, bus);
-    jobStore.set(jobId, { status: 'queued' });
 
-    const bb = Busboy({ headers: { 'content-type': req.headers.get('content-type') || '' } });
-    const tmpRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'pip-upload-'));
+    let tmpRoot: string;
+    try {
+        tmpRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'pip-upload-'));
+    } catch (error) {
+        jobStore.delete(jobId);
+        return Response.json({ error: error instanceof Error ? error.message : 'failed to create upload workspace' }, { status: 500 });
+    }
     const files: Array<{ name: string; tmpPath: string; index: number }> = [];
     const saves: Promise<void>[] = [];
     let index = 0;
@@ -71,6 +112,9 @@ export async function POST(req: NextRequest) {
             }
 
             fileStream.on('error', reject);
+            fileStream.on('limit', () => {
+                bb.destroy(new Error(`file size exceeds limit (${RESOURCE_LIMITS.maxSingleFileBytes} bytes)`));
+            });
             ws.on('error', reject);
             fileStream.pipe(ws);
 
@@ -83,6 +127,7 @@ export async function POST(req: NextRequest) {
             save.catch(() => {});
             saves.push(save);
         });
+        bb.on('filesLimit', () => reject(new Error(`file count exceeds limit (${RESOURCE_LIMITS.maxUploadFiles})`)));
         bb.on('error', reject);
         bb.on('close', resolve);
     });
@@ -92,18 +137,24 @@ export async function POST(req: NextRequest) {
     // ことがあるため、最後まで読み切ってから明示的に bb.end() する。
     const pump = (async () => {
         const reader = (req.body as ReadableStream<Uint8Array>).getReader();
+        let receivedTotal = 0;
         try {
             for (;;) {
                 const { done, value } = await reader.read();
                 if (done) break;
                 if (value && value.byteLength) {
+                    receivedTotal += value.byteLength;
+                    if (receivedTotal > RESOURCE_LIMITS.maxUploadBytes) {
+                        throw new Error(`upload size exceeds limit (${RESOURCE_LIMITS.maxUploadBytes} bytes)`);
+                    }
                     if (!bb.write(Buffer.from(value))) {
-                        await new Promise<void>((res) => bb.once('drain', res));
+                        await waitForDrain(bb);
                     }
                 }
             }
             bb.end();
         } catch (err) {
+            await reader.cancel(err).catch(() => undefined);
             bb.destroy(err as Error);
             throw err;
         }
@@ -156,15 +207,19 @@ export async function POST(req: NextRequest) {
         jobStore.set(jobId, { status: failures.length ? 'error' : 'done', filename: summary });
         if (failures.length) {
             bus.emitEvent({ type: 'error-summary', successes, failures });
+            bus.emitEvent({ type: 'error', message: summary });
+        } else {
+            bus.emitEvent({ type: 'done', filename: summary });
         }
-        bus.emitEvent({ type: 'done', filename: summary });
         return new Response(JSON.stringify({ jobId, count: successes.length, failures }), {
             status: failures.length ? 207 : 200,
             headers: { 'Content-Type': 'application/json' },
         });
     } catch (err: any) {
-        bus.emitEvent({ type: 'error', message: err?.message || 'failed' });
-        return new Response(JSON.stringify({ error: err?.message || 'failed' }), { status: 500 });
+        const message = err?.message || 'failed';
+        jobStore.set(jobId, { status: 'error', error: message });
+        bus.emitEvent({ type: 'error', message });
+        return new Response(JSON.stringify({ error: message }), { status: 500 });
     } finally {
         try { await fs.promises.rm(tmpRoot, { recursive: true, force: true }); } catch {}
     }

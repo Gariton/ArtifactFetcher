@@ -1,5 +1,5 @@
 node_modules
-.next/cache
+.next
 *.log
 npm-debug.log*
 .DS_Store
@@ -9,6 +9,9 @@ npm-debug.log*
 downloads
 tmp
 coverage
-.env
+.env*
+*.tsbuildinfo
+.agents
+.codex
 compose.yaml
 production.yaml

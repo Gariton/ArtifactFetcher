@@ -199,7 +199,7 @@ async function streamToS3({
 }): Promise<{ size: number; contentType?: string }> {
     const response = await openDownloadStream({ url, token, allowExternalRedirect });
 
-    const total = Number.parseInt(response.headers['content-length'] || '', 10) || undefined;
+    const total = Number.parseInt(String(response.headers['content-length'] ?? ''), 10) || undefined;
     bus.emitEvent({ type: 'item-start', index, digest: itemName, total });
     let received = 0;
     const progress = new Transform({
@@ -241,7 +241,7 @@ async function downloadToFile({
 }): Promise<number> {
     try {
         const response = await openDownloadStream({ url, token, allowExternalRedirect: true });
-        const total = Number.parseInt(response.headers['content-length'] || '', 10) || undefined;
+        const total = Number.parseInt(String(response.headers['content-length'] ?? ''), 10) || undefined;
         bus.emitEvent({ type: 'item-start', index, digest: itemName, total });
         let received = 0;
         const progress = new Transform({
@@ -420,7 +420,7 @@ export async function downloadGitLabReleaseAssets({
         bus.emitEvent({ type: 'tar-writing' });
         const filename = `${bundleName}.tar`;
         const tarPath = path.join(workRoot, filename);
-        await tar.c({ cwd: bundleRoot, file: tarPath, sync: true }, ['.']);
+        await tar.c({ cwd: bundleRoot, file: tarPath }, ['.']);
         bus.emitEvent({ type: 'stage', stage: 'uploading-s3' });
         await uploadFileToS3({ filePath: tarPath, key: objectKey, contentType: 'application/x-tar' });
         return { filename, size: totalSize };

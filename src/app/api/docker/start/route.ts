@@ -5,7 +5,7 @@ import { jobStore } from "@/lib/jobStore";
 import { ProgressBus, globalBusMap } from "@/lib/progressBus";
 import { buildDockerImageTar } from "@/lib/docker/downloader";
 import { logRequest } from "@/lib/requestLog";
-import { uploadFileToS3 } from "@/lib/storage/s3";
+import { makeArtifactObjectKey, uploadFileToS3 } from "@/lib/storage/s3";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +18,7 @@ export const POST = async (req: NextRequest) => {
     logRequest(req, `docker:start ${registry ? registry + '/' : ''}${repo}:${tag} platform=${platform || 'linux/amd64'}`);
 
     const jobId = nanoid();
-    jobStore.set(jobId, { status: 'queued' });
+    if (!jobStore.create(jobId)) return Response.json({ error: 'job capacity exceeded' }, { status: 503 });
 
     // 進捗用バス
     const bus = new ProgressBus();
@@ -41,10 +41,11 @@ export const POST = async (req: NextRequest) => {
                     bus,
                 });
                 workRoot = tmpRoot;
-                const objectKey = `${jobId}/${filename}`;
+                const objectKey = makeArtifactObjectKey(jobId, filename);
                 bus.emitEvent({ type: 'stage', stage: 'uploading-s3' });
                 await uploadFileToS3({ filePath: tarPath, key: objectKey, contentType: 'application/x-tar' });
                 jobStore.set(jobId, { status: 'done', filename, objectKey });
+                bus.emitEvent({ type: 'done', filename });
             } finally {
                 if (workRoot) {
                     try { await fs.rm(workRoot, { recursive: true, force: true }); } catch {}

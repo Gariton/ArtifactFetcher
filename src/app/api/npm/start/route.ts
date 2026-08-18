@@ -5,7 +5,7 @@ import { jobStore } from '@/lib/jobStore';
 import { ProgressBus, globalBusMap } from '@/lib/progressBus';
 import { makeLockFromSpecs } from '@/lib/npm/arboristLock';
 import { buildTarFromLock } from '@/lib/npm/downloader';
-import { uploadFileToS3 } from '@/lib/storage/s3';
+import { makeArtifactObjectKey, uploadFileToS3 } from '@/lib/storage/s3';
 import { logRequest } from '@/lib/requestLog';
 
 export const runtime = 'nodejs';
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     logRequest(req, detail);
     
     const jobId = nanoid();
-    jobStore.set(jobId, { status: 'queued' });
+    if (!jobStore.create(jobId)) return Response.json({ error: 'job capacity exceeded' }, { status: 503 });
     
     const bus = new ProgressBus();
     globalBusMap.set(jobId, bus);
@@ -49,10 +49,11 @@ export async function POST(req: NextRequest) {
             try {
                 const { tarPath, filename, workRoot: tmpRoot } = await buildTarFromLock({ lockText, bus, bundleName: bundleName || 'npm-offline', registry, auth });
                 workRoot = tmpRoot;
-                const objectKey = `${jobId}/${filename}`;
+                const objectKey = makeArtifactObjectKey(jobId, filename);
                 bus.emitEvent({ type: 'stage', stage: 'uploading-s3' });
                 await uploadFileToS3({ filePath: tarPath, key: objectKey, contentType: 'application/x-tar' });
                 jobStore.set(jobId, { status: 'done', filename, objectKey });
+                bus.emitEvent({ type: 'done', filename });
             } finally {
                 if (workRoot) {
                     try { await fs.rm(workRoot, { recursive: true, force: true }); } catch {}

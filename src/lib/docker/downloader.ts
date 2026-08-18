@@ -4,9 +4,12 @@ import path from 'node:path';
 import os from 'node:os';
 import https from 'node:https';
 import crypto from 'node:crypto';
+import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import * as tar from 'tar';
 import { ProgressBus } from "../progressBus";
+import { assertDockerRepository, assertDockerTag, safeFilenamePart } from '@/lib/inputSafety';
+import { assertFileSize, assertItemCount, ByteBudget } from '@/lib/resourceLimits';
 
 const MEDIA = {
     INDEX: 'application/vnd.oci.image.index.v1+json',
@@ -87,17 +90,24 @@ async function negotiateAuth(
     }
 
     const url = new URL(challenge.realm);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+        throw new Error('Registry authentication realm must be an HTTP(S) URL without credentials');
+    }
     if (challenge.service) url.searchParams.set('service', challenge.service);
     if (challenge.scope) url.searchParams.set('scope', challenge.scope);
 
     const headers: Record<string, string> = {};
     const basic = buildBasicAuth(auth);
+    if (basic && url.protocol !== 'https:') {
+        throw new Error('Registry credentials require an HTTPS authentication realm');
+    }
     if (basic) headers.Authorization = basic; // 認証付きトークン取得
 
     const res = await requestWithRetry({
         method: 'GET',
         url: url.toString(),
         headers,
+        maxRedirects: basic ? 0 : 5,
         httpsAgent: makeHttpsAgent(insecure),
         validateStatus: (s: number) => s >= 200 && s < 500,
     });
@@ -150,21 +160,21 @@ async function registryGet(opts: {
 
 /** レジストリ入力（任意・スキーム/エイリアス込み可）を API ベース URL 等へ正規化する。 */
 function normalizeRegistry(input?: string): RegistryTarget {
-    let reg = (input || '').trim();
+    const reg = (input || '').trim();
     if (!reg) {
         return { host: 'docker.io', baseUrl: `https://${DOCKER_HUB_REGISTRY}`, isDockerHub: true };
     }
-    let protocol = 'https';
-    const schemeMatch = /^(https?):\/\//i.exec(reg);
-    if (schemeMatch) {
-        protocol = schemeMatch[1].toLowerCase();
-        reg = reg.slice(schemeMatch[0].length);
+    let url: URL;
+    try { url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(reg) ? reg : `https://${reg}`); }
+    catch { throw new Error('Docker registry URL is invalid'); }
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+        throw new Error('Docker registry URL must be HTTP(S) without credentials, query, or fragment');
     }
-    reg = reg.replace(/\/+$/, '');
-    if (reg === 'docker.io' || reg === 'index.docker.io' || reg === 'registry-1.docker.io') {
+    url.pathname = url.pathname.replace(/\/+$/, '');
+    if (['docker.io', 'index.docker.io', 'registry-1.docker.io'].includes(url.hostname) && !url.pathname) {
         return { host: 'docker.io', baseUrl: `https://${DOCKER_HUB_REGISTRY}`, isDockerHub: true };
     }
-    return { host: reg, baseUrl: `${protocol}://${reg}`, isDockerHub: false };
+    return { host: url.host, baseUrl: url.toString().replace(/\/$/, ''), isDockerHub: false };
 }
 
 /**
@@ -229,20 +239,32 @@ async function downloadBlob(
     destFile: string,
     bus: ProgressBus,
     index?: number,
+    budget?: ByteBudget,
 ) {
     const res = await registryGet({ baseUrl, apiPath: `/v2/${repository}/blobs/${digest}`, auth, responseType: 'stream', insecure, tokenRef });
-    const total = parseInt(res.headers['content-length'] || '0', 10);
+    const total = Number.parseInt(String(res.headers['content-length'] ?? '0'), 10);
+    assertFileSize(total || undefined, `Docker blob ${digest}`);
     if (typeof index === 'number') bus.emitEvent({ type: 'item-start', index, digest, total: total || undefined });
 
     await fs.promises.mkdir(path.dirname(destFile), { recursive: true });
     const hash = crypto.createHash('sha256');
     let received = 0;
-    res.data.on('data', (chunk: Buffer) => {
-        received += chunk.length;
-        hash.update(chunk);
-        if (typeof index === 'number') bus.emitEvent({ type: 'item-progress', index, received, total: total || undefined });
+    const limiter = new Transform({
+        transform(chunk: Buffer | string, _encoding, callback) {
+            const bytes = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
+            try {
+                received += bytes;
+                assertFileSize(received, `Docker blob ${digest}`);
+                budget?.consume(bytes);
+                hash.update(chunk);
+                if (typeof index === 'number') bus.emitEvent({ type: 'item-progress', index, received, total: total || undefined });
+                callback(null, chunk);
+            } catch (error) {
+                callback(error as Error);
+            }
+        },
     });
-    await pipeline(res.data, fs.createWriteStream(destFile));
+    await pipeline(res.data, limiter, fs.createWriteStream(destFile));
 
     const computed = `sha256:${hash.digest('hex')}`;
     if (computed !== digest) {
@@ -275,54 +297,70 @@ export async function buildDockerImageTar({
     insecureTLS?: boolean;
     bus: ProgressBus;
 }): Promise<{ tarPath: string; filename: string; workRoot: string }> {
-    const { target, repository: repo } = resolveTarget(registry, repository);
+    const normalizedTag = assertDockerTag(tag);
+    const { target, repository: resolvedRepository } = resolveTarget(registry, repository);
+    const repo = assertDockerRepository(resolvedRepository);
     const auth: RegistryAuth | undefined = username ? { username, password } : undefined;
+    if (auth && new URL(target.baseUrl).protocol !== 'https:') {
+        throw new Error('Docker registry credentials require an HTTPS registry URL');
+    }
     const tokenRef: TokenRef = {};
 
     bus.emitEvent({ type: 'stage', stage: 'auth' });
-    bus.emitEvent({ type: 'log', level: 'info', message: `レジストリ: ${target.host} / イメージ: ${repo}:${tag}` });
+    bus.emitEvent({ type: 'log', level: 'info', message: `レジストリ: ${target.host} / イメージ: ${repo}:${normalizedTag}` });
 
-    const manifest: any = await resolvePlatformManifest(target.baseUrl, repo, tag, platform, auth, insecureTLS, tokenRef, bus);
+    const manifest: any = await resolvePlatformManifest(target.baseUrl, repo, normalizedTag, platform, auth, insecureTLS, tokenRef, bus);
     if (!manifest?.config?.digest || !Array.isArray(manifest.layers)) {
         throw new Error('Unexpected manifest structure (missing config or layers).');
     }
+    assertItemCount(manifest.layers.length, 'Docker layer');
     bus.emitEvent({ type: 'manifest-resolved', items: manifest.layers });
 
-    const safeRepo = repo.replace(/[\/]/g, '_');
+    const safeRepo = safeFilenamePart(repo.replaceAll('/', '_'), 'image');
     const workRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'imgdl-'));
-    const imageDir = path.join(workRoot, `${safeRepo}@${tag}`);
-    await fs.promises.mkdir(imageDir, { recursive: true });
+    try {
+        const imageDir = path.join(workRoot, `${safeRepo}@${normalizedTag}`);
+        await fs.promises.mkdir(imageDir, { recursive: true });
+        const budget = new ByteBudget();
+        const parseDigest = (digest: unknown) => {
+            const match = /^sha256:([a-f0-9]{64})$/i.exec(String(digest ?? ''));
+            if (!match) throw new Error(`unsupported or invalid Docker digest: ${digest}`);
+            return match[1].toLowerCase();
+        };
 
-    bus.emitEvent({ type: 'stage', stage: 'download-config' });
-    const configDigest = manifest.config.digest.split(':')[1];
-    const configPath = path.join(imageDir, `${configDigest}.json`);
-    await downloadBlob(target.baseUrl, repo, manifest.config.digest, auth, insecureTLS, tokenRef, configPath, bus);
+        bus.emitEvent({ type: 'stage', stage: 'download-config' });
+        const configDigest = parseDigest(manifest.config.digest);
+        const configPath = path.join(imageDir, `${configDigest}.json`);
+        await downloadBlob(target.baseUrl, repo, manifest.config.digest, auth, insecureTLS, tokenRef, configPath, bus, undefined, budget);
 
-    for (let i = 0; i < manifest.layers.length; i++) {
-        bus.emitEvent({ type: 'stage', stage: `download-layer-${i}` });
-        const layer = manifest.layers[i];
-        const layerId = layer.digest.split(':')[1];
-        const layerDir = path.join(imageDir, layerId);
-        const dest = path.join(layerDir, 'layer.tar');
-        await downloadBlob(target.baseUrl, repo, layer.digest, auth, insecureTLS, tokenRef, dest, bus, i);
+        for (let i = 0; i < manifest.layers.length; i++) {
+            bus.emitEvent({ type: 'stage', stage: `download-layer-${i}` });
+            const layer = manifest.layers[i];
+            const layerId = parseDigest(layer.digest);
+            const layerDir = path.join(imageDir, layerId);
+            const dest = path.join(layerDir, 'layer.tar');
+            await downloadBlob(target.baseUrl, repo, layer.digest, auth, insecureTLS, tokenRef, dest, bus, i, budget);
+        }
+
+        // docker load 後に正しいタグが付くよう、Docker Hub 以外はホスト名を前置する。
+        const refName = target.isDockerHub ? repo : `${target.host}/${repo}`;
+        const loadManifest = [
+            {
+                Config: `${configDigest}.json`,
+                RepoTags: [`${refName}:${normalizedTag}`],
+                Layers: manifest.layers.map((l: any) => `${parseDigest(l.digest)}/layer.tar`),
+            },
+        ];
+        await fs.promises.writeFile(path.join(imageDir, 'manifest.json'), JSON.stringify(loadManifest, null, 2));
+
+        bus.emitEvent({ type: 'tar-writing' });
+        const filename = `${safeRepo}@${normalizedTag}.tar`;
+        const tarPath = path.join(workRoot, filename);
+        await tar.c({ file: tarPath, cwd: imageDir }, ['.']);
+
+        return { tarPath, filename, workRoot };
+    } catch (error) {
+        try { await fs.promises.rm(workRoot, { recursive: true, force: true }); } catch {}
+        throw error;
     }
-
-    // docker load 後に正しいタグが付くよう、Docker Hub 以外はホスト名を前置する。
-    const refName = target.isDockerHub ? repo : `${target.host}/${repo}`;
-    const loadManifest = [
-        {
-            Config: `${configDigest}.json`,
-            RepoTags: [`${refName}:${tag}`],
-            Layers: manifest.layers.map((l: any) => `${l.digest.split(':')[1]}/layer.tar`),
-        },
-    ];
-    await fs.promises.writeFile(path.join(imageDir, 'manifest.json'), JSON.stringify(loadManifest, null, 2));
-
-    bus.emitEvent({ type: 'tar-writing' });
-    const filename = `${safeRepo}@${tag}.tar`;
-    const tarPath = path.join(workRoot, filename);
-    await tar.c({ file: tarPath, cwd: imageDir, sync: true }, ['.']);
-
-    bus.emitEvent({ type: 'done', filename });
-    return { tarPath, filename, workRoot };
 }

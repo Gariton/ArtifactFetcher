@@ -16,7 +16,7 @@ export const FileItem = memo(function FileItemMemo ({
     loading?: boolean;
     disabled?: boolean;
 }) {
-    const showCheck = status === 'done' || status === 'published';
+    const showCheck = status === 'done' || status === 'published' || status === 'skipped';
     const showProgress = ['processing', 'uploading', 'publishing'].includes(status);
     const isError = status === 'error';
     const showIdle = !status || ['waiting'].includes(status);

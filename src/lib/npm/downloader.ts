@@ -3,9 +3,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as tar from 'tar';
+import { Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import * as ssri from 'ssri';
 import { parseLockfile } from './lockParser';
 import { ProgressBus, type LockEntry } from '../progressBus';
 import type { NpmAuth } from './arboristLock';
+import { safeBundleName, safeFilenamePart } from '@/lib/inputSafety';
+import { assertFileSize, assertItemCount, ByteBudget } from '@/lib/resourceLimits';
 
 // tarball ダウンロード用の Authorization ヘッダを組み立てる。
 // username があれば Basic、なければトークン(secret)として Bearer。
@@ -22,8 +27,8 @@ function buildNpmAuthHeader(auth?: NpmAuth): Record<string, string> {
     return {};
 }
 
-function sameHost(a: string, b: string): boolean {
-    try { return new URL(a).host === new URL(b).host; }
+function sameOrigin(a: string, b: string): boolean {
+    try { return new URL(a).origin === new URL(b).origin; }
     catch { return false; }
 }
 
@@ -55,54 +60,92 @@ export async function buildTarFromLock({
     registry?: string;
     auth?: NpmAuth;
 }) {
+    const resolvedBundleName = safeBundleName(bundleName, 'npm-offline');
     bus.emitEvent({ type: 'stage', stage: 'parse-lockfile' });
     let entries: LockEntry[] = parseLockfile(lockText);
     entries = entries.filter(e => !!e.resolved);
+    assertItemCount(entries.length, 'npm package');
+    const missingIntegrity = entries.find((entry) => !entry.integrity);
+    if (missingIntegrity) {
+        throw new Error(`lockfile entry ${missingIntegrity.name}@${missingIntegrity.version} is missing integrity metadata`);
+    }
     bus.emitEvent({ type: 'manifest-resolved', items: entries });
 
     // レジストリと同一ホストの tarball にのみ認証ヘッダを付与する。
     // （public な tarball 配信元へ資格情報を漏らさないため）
     const authHeader = buildNpmAuthHeader(auth);
+    if (registry && Object.keys(authHeader).length && new URL(registry).protocol !== 'https:') {
+        throw new Error('npm registry credentials require an HTTPS URL');
+    }
 
     const workRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'npmdl-'));
-    const dir = path.join(workRoot, bundleName);
-    await fs.promises.mkdir(path.join(dir, 'npm', 'tarballs'), { recursive: true });
-    await fs.promises.writeFile(path.join(dir, 'npm', 'package-lock.json'), lockText);
-    
-    for (let i = 0; i < entries.length; i++) {
-        const e = entries[i]!;
-        const url = e.resolved as string;
-        const filename = (url.split('/').pop()?.split('?')[0]) || `${e.name}-${e.version}.tgz`;
-        const dest = path.join(dir, 'npm', 'tarballs', filename);
-        
-        bus.emitEvent({ type: 'stage', stage: `download-${i}` });
-        
-        const headers = (registry && sameHost(url, registry)) ? authHeader : undefined;
-        const res = await requestWithRetry({ method: 'GET', url, responseType: 'stream', headers });
-        const total = parseInt(res.headers['content-length'] || '0', 10);
-        bus.emitEvent({ type: 'item-start', index: i, digest: `${e.name}@${e.version}`, total: total || undefined });
-        
-        let received = 0;
-        await new Promise<void>((resolve, reject) => {
-            res.data.on('data', (chunk: Buffer | string) => {
-                if (typeof chunk === 'string') chunk = Buffer.from(chunk);
-                received += (chunk as Buffer).length;
-                bus.emitEvent({ type: 'item-progress', index: i, received, total: total || undefined });
+    try {
+        const dir = path.join(workRoot, resolvedBundleName);
+        const tarballsDir = path.join(dir, 'npm', 'tarballs');
+        await fs.promises.mkdir(tarballsDir, { recursive: true });
+        await fs.promises.writeFile(path.join(dir, 'npm', 'package-lock.json'), lockText);
+        const budget = new ByteBudget();
+
+        for (let i = 0; i < entries.length; i++) {
+            const e = entries[i]!;
+            const url = e.resolved as string;
+            let resolvedUrl: URL;
+            try { resolvedUrl = new URL(url); }
+            catch { throw new Error(`invalid tarball URL for ${e.name}@${e.version}`); }
+            if (!['http:', 'https:'].includes(resolvedUrl.protocol) || resolvedUrl.username || resolvedUrl.password) {
+                throw new Error(`tarball URL for ${e.name}@${e.version} must be HTTP(S) without credentials`);
+            }
+            const urlName = (() => {
+                try { return decodeURIComponent(new URL(url).pathname.split('/').pop() || ''); }
+                catch { return ''; }
+            })();
+            const filename = safeFilenamePart(urlName || `${e.name}-${e.version}.tgz`, `package-${i}.tgz`, 240);
+            const dest = path.join(tarballsDir, `${i}-${filename}`);
+
+            bus.emitEvent({ type: 'stage', stage: `download-${i}` });
+
+            const headers = (registry && sameOrigin(url, registry)) ? authHeader : undefined;
+            const res = await requestWithRetry({
+                method: 'GET',
+                url,
+                responseType: 'stream',
+                headers,
+                // Never follow an authenticated request to another origin or to plaintext HTTP.
+                maxRedirects: headers ? 0 : 5,
             });
-            const file = fs.createWriteStream(dest);
-            res.data.on('error', reject);
-            file.on('error', reject);
-            file.on('finish', resolve);
-            res.data.pipe(file);
-        });
-        
-        bus.emitEvent({ type: 'item-done', index: i });
+            const total = Number.parseInt(String(res.headers['content-length'] ?? '0'), 10);
+            assertFileSize(total || undefined, `npm package ${e.name}`);
+            bus.emitEvent({ type: 'item-start', index: i, digest: `${e.name}@${e.version}`, total: total || undefined });
+
+            let received = 0;
+            const limiter = new Transform({
+                transform(chunk: Buffer | string, _encoding, callback) {
+                    const bytes = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
+                    try {
+                        received += bytes;
+                        assertFileSize(received, `npm package ${e.name}`);
+                        budget.consume(bytes);
+                        bus.emitEvent({ type: 'item-progress', index: i, received, total: total || undefined });
+                        callback(null, chunk);
+                    } catch (error) {
+                        callback(error as Error);
+                    }
+                },
+            });
+            const verifier = ssri.integrityStream({ integrity: e.integrity!, size: total || undefined });
+            await pipeline(res.data, limiter, verifier, fs.createWriteStream(dest));
+
+            bus.emitEvent({ type: 'item-done', index: i });
+        }
+
+        bus.emitEvent({ type: 'tar-writing' });
+        const filename = `${resolvedBundleName}.tar`;
+        const tarPath = path.join(workRoot, filename);
+        await tar.c({ file: tarPath, cwd: dir }, ['.']);
+
+        return { tarPath, filename, workRoot };
+    } catch (error) {
+        try { await fs.promises.rm(workRoot, { recursive: true, force: true }); } catch {}
+        throw error;
     }
-    
-    bus.emitEvent({ type: 'tar-writing' });
-    const tarPath = path.join(workRoot, `${bundleName}.tar`);
-    await tar.c({ file: tarPath, cwd: dir, sync: true }, ['.']);
-    bus.emitEvent({ type: 'done', filename: `${bundleName}.tar` });
-    
-    return { tarPath, filename: `${bundleName}.tar`, workRoot };
 }

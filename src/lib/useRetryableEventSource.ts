@@ -174,7 +174,7 @@ export function useRetryableEventSource({
                 }, delay);
             }
         };
-    }, [cleanup, hideNotification, maxReconnectAttempts, notificationId, notificationLabel, notifyReconnectFailure, notifyReconnectSuccess, reconnectBackoffFactor, reconnectInitialDelay, reconnectMaxDelay, showReconnectNotification]);
+    }, [cleanup, hideNotification, maxReconnectAttempts, notifyReconnectFailure, notifyReconnectSuccess, reconnectBackoffFactor, reconnectInitialDelay, reconnectMaxDelay, showReconnectNotification]);
 
     const start = useCallback((url: string) => {
         lastUrlRef.current = url;

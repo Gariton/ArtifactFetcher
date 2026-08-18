@@ -164,6 +164,21 @@ export function UploadPane() {
             scheduleFlush();
             return;
         }
+        if (data.type === 'item-skip' && data.scope === 'npm-publish') {
+            const targetIndex = resolveIndex(data.index);
+            if (targetIndex === null) return;
+            const prev = perFileRef.current[targetIndex];
+            perFileRef.current = {
+                ...perFileRef.current,
+                [targetIndex]: {
+                    ...prev,
+                    status: 'skipped',
+                    received: prev?.total ?? prev?.received ?? 0,
+                },
+            };
+            scheduleFlush();
+            return;
+        }
         if (data.type === 'item-error' && data.scope === 'npm-publish') {
             const targetIndex = resolveIndex(data.index);
             if (targetIndex === null) return;
@@ -200,7 +215,10 @@ export function UploadPane() {
             setLoading(false);
             setError(data.message || 'アップロードに失敗しました');
             perFileRef.current = Object.fromEntries(
-                Object.entries(perFileRef.current).map(([key, value]) => [key, { ...value, status: value.status === 'published' ? 'published' : 'error' }])
+                Object.entries(perFileRef.current).map(([key, value]) => [key, {
+                    ...value,
+                    status: value.status === 'published' || value.status === 'skipped' ? value.status : 'error',
+                }])
             ) as Record<number, FileProgressState>;
             scheduleFlush();
             stopSseRef.current();
@@ -339,8 +357,6 @@ export function UploadPane() {
     useEffect(() => {
         getEnvironmentVar().then(v => {
             form.setFieldValue("registryUrl", v.NPM_UPLOAD_REGISTRY);
-            form.setFieldValue("username", v.NPM_UPLOAD_USERNAME);
-            form.setFieldValue("password", v.NPM_UPLOAD_PASSWORD);
         });
         return () => {
             if (flushTimerRef.current) {
@@ -355,7 +371,7 @@ export function UploadPane() {
     const failedCount = Object.values(perFileSnap).filter((state) => state?.status === 'error').length;
 
     const files = form.getValues().files;
-    const completed = Object.values(perFileSnap).filter((s) => s?.status === 'published' || s?.status === 'uploaded').length;
+    const completed = Object.values(perFileSnap).filter((s) => ['published', 'uploaded', 'skipped'].includes(s?.status)).length;
 
     return (
         <div>

@@ -69,8 +69,8 @@ export const theme = createTheme({
     autoContrast: true,
     luminanceThreshold: 0.45,
 
-    fontFamily: "var(--font-plex-sans), system-ui, -apple-system, Segoe UI, sans-serif",
-    fontFamilyMonospace: "var(--font-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace",
+    fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+    fontFamilyMonospace: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
 
     defaultRadius: 'md',
     radius: {

@@ -11,7 +11,13 @@ export type LoadManifestEntry = {
 
 export const MAX_DOCKER_MANIFEST_BYTES = 1024 * 1024;
 
-/** docker load 形式の tar から manifest.json を取り出して最初のエントリを返す */
+/** docker save archive名の `@tag` 部分を取り出す。 */
+export function tagFromDockerArchiveName(name: string): string | undefined {
+    const match = /@([^@]+)\.tar(?:\.gz)?$/i.exec(name);
+    return match?.[1];
+}
+
+/** docker load 形式の tar / tar.gz から manifest.json を取り出して最初のエントリを返す */
 export async function readLoadManifestFromTar(tarPath: string): Promise<LoadManifestEntry | null> {
     const work = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'mf-'));
     try {

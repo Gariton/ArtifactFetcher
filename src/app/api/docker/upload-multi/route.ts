@@ -7,7 +7,7 @@ import Busboy from 'busboy';
 import { jobStore } from '@/lib/jobStore';
 import { FileInfo, ProgressBus, RepoTag, globalBusMap as busMap } from '@/lib/progressBus';
 import { normalizeDockerRegistryUrl, pushImageToRegistry } from '@/lib/docker/registryPusher';
-import { readLoadManifestFromTar, repoTagFromRepoTags } from '@/lib/docker/readDockerLoadManifest';
+import { readLoadManifestFromTar, repoTagFromRepoTags, tagFromDockerArchiveName } from '@/lib/docker/readDockerLoadManifest';
 import { resolveUploadAuth } from '@/lib/authHeaders';
 import { requireUploadAccess } from '@/lib/requestSecurity';
 import { isValidJobId } from '@/lib/inputSafety';
@@ -212,7 +212,7 @@ export async function POST(req: NextRequest) {
                     tag = picked.tag;
                 } else {
                     if (!repository) throw new Error('repository is required when useManifest=false');
-                    if (!tag) tag = guessTagFromTarName(f.name) || 'latest';
+                    if (!tag) tag = tagFromDockerArchiveName(f.name) || 'latest';
                 }
                 return { repository, tag };
             }));
@@ -277,10 +277,4 @@ export async function POST(req: NextRequest) {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
     });
-}
-
-function guessTagFromTarName(name: string) {
-    // 例: library_redis@7.2.tar → 7.2
-    const m = /@([^@]+)\.tar$/i.exec(name);
-    return m?.[1];
 }

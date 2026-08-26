@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import * as tar from 'tar';
 import { extractDockerArchive, normalizeDockerRegistryUrl } from '../src/lib/docker/registryPusher';
-import { MAX_DOCKER_MANIFEST_BYTES, readLoadManifestFromTar } from '../src/lib/docker/readDockerLoadManifest';
+import { MAX_DOCKER_MANIFEST_BYTES, readLoadManifestFromTar, tagFromDockerArchiveName } from '../src/lib/docker/readDockerLoadManifest';
 import { normalizeNpmRegistryUrl } from '../src/lib/npm/publish';
 import { assertRpmSpec, normalizeRpmBaseUrl } from '../src/lib/rpm/downloader';
 import { normalizeRpmRepositoryUrl } from '../src/lib/rpm/publish';
@@ -59,6 +59,36 @@ test('Docker archive extraction rejects symbolic links', async () => {
         await tar.c({ cwd: source, file: archive }, ['layer.tar']);
         await assert.rejects(extractDockerArchive(archive), /link or special entry/);
     } finally {
+        await fs.rm(root, { recursive: true, force: true });
+    }
+});
+
+test('Docker gzip-compressed archives support manifest detection and safe extraction', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'artifact-fetcher-gzip-test-'));
+    let extracted: string | undefined;
+    try {
+        const source = path.join(root, 'source');
+        await fs.mkdir(source);
+        const manifest = [{
+            Config: 'config.json',
+            RepoTags: ['library/redis:7.2'],
+            Layers: ['layer.tar'],
+        }];
+        await fs.writeFile(path.join(source, 'manifest.json'), JSON.stringify(manifest));
+        await fs.writeFile(path.join(source, 'config.json'), '{}');
+        await fs.writeFile(path.join(source, 'layer.tar'), 'layer');
+
+        const archive = path.join(root, 'library_redis@7.2.tar.gz');
+        await tar.c({ cwd: source, file: archive, gzip: true }, ['manifest.json', 'config.json', 'layer.tar']);
+
+        assert.deepEqual(await readLoadManifestFromTar(archive), manifest[0]);
+        assert.equal(tagFromDockerArchiveName(archive), '7.2');
+        assert.equal(tagFromDockerArchiveName('library_redis@7.2.tar'), '7.2');
+
+        extracted = await extractDockerArchive(archive);
+        assert.deepEqual(JSON.parse(await fs.readFile(path.join(extracted, 'manifest.json'), 'utf8')), manifest);
+    } finally {
+        if (extracted) await fs.rm(extracted, { recursive: true, force: true });
         await fs.rm(root, { recursive: true, force: true });
     }
 });

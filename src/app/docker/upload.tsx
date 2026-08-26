@@ -24,6 +24,14 @@ type FormType = {
     password: string;
 }
 
+const DOCKER_ARCHIVE_ACCEPT = {
+    'application/x-tar': ['.tar', '.tar.gz'],
+    'application/gzip': ['.tar.gz'],
+    'application/x-gzip': ['.tar.gz'],
+    'application/x-compressed': ['.tar.gz'],
+    'application/octet-stream': ['.tar', '.tar.gz'],
+};
+
 export function UploadPane({ env }: { env: DockerPublicRuntimeConfig }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<null|string>(null);
@@ -442,7 +450,7 @@ export function UploadPane({ env }: { env: DockerPublicRuntimeConfig }) {
                             ) as Record<number, { received: number; total?: number; status: string }>;
                             setPerFileSnap({ ...perFileRef.current });
                         }}
-                        accept={["application/x-tar"]}
+                        accept={DOCKER_ARCHIVE_ACCEPT}
                         p="xl"
                         className={carbonDropzoneClasses.root}
                     >
@@ -453,11 +461,11 @@ export function UploadPane({ env }: { env: DockerPublicRuntimeConfig }) {
                                 <Dropzone.Reject><IconX size={26} stroke={1.7} /></Dropzone.Reject>
                             </span>
                             <div className={carbonDropzoneClasses.title}>
-                                <Dropzone.Idle>Docker イメージ tar をドロップ</Dropzone.Idle>
+                                <Dropzone.Idle>Docker イメージ tar / tar.gz をドロップ</Dropzone.Idle>
                                 <Dropzone.Accept>ここにドロップ</Dropzone.Accept>
                                 <Dropzone.Reject>対応していないファイルです</Dropzone.Reject>
                             </div>
-                            <div className={carbonDropzoneClasses.sub}>docker save で出力した .tar ・ 複数可</div>
+                            <div className={carbonDropzoneClasses.sub}>docker save の .tar または gzip 圧縮した .tar.gz ・ 複数可</div>
                         </div>
                     </Dropzone>
 
@@ -498,7 +506,7 @@ export function UploadPane({ env }: { env: DockerPublicRuntimeConfig }) {
                     )}
                 </CarbonSection>
 
-                <CarbonFooter hint={dockerFiles.length ? `${dockerFiles.length} イメージを push します` : '.tar を追加してください'}>
+                <CarbonFooter hint={dockerFiles.length ? `${dockerFiles.length} イメージを push します` : '.tar / .tar.gz を追加してください'}>
                     {failedCount > 0 && !loading && (
                         <CarbonGhostButton onClick={handleRetryFailed}><IconRefresh size={15} /> 失敗を再試行</CarbonGhostButton>
                     )}

@@ -252,15 +252,15 @@ npm run download -- npm next ^18 --host https://downloader.example.com --out dow
 - `GET  /api/build/progress?jobId=...` … SSE  
 - `GET  /api/build/download?jobId=...` … `.tar` ダウンロード  
 
-### Docker イメージの アップロード（tar → Registry）
-- 複数 `.tar` を **multipart** で送信しながら、**受信進捗**を SSE で通知  
-- 受信後、`useManifest=true` なら tar 内の `manifest.json` から `repository:tag` を決定  
+### Docker イメージの アップロード（tar / tar.gz → Registry）
+- 複数の `.tar` / `.tar.gz` を **multipart** で送信しながら、**受信進捗**を SSE で通知
+- 受信後、`useManifest=true` ならアーカイブ内の `manifest.json` から `repository:tag` を決定
 - Registry v2 API（`POST /blobs/uploads/` → `PATCH` → `PUT?digest=`）で push  
   - 既に存在する blob は `HEAD /blobs/<digest>` で検出し、**擬似進捗 100%** or `item-skip` を送出  
 
 #### API
 - `POST /api/docker/upload-multi?jobId=...&registry=...&useManifest=true`
-  body: `files[]=@image1.tar, files[]=@image2.tar ...`  
+  body: `files[]=@image1.tar, files[]=@image2.tar.gz ...`
 - 一時入力の認証情報はqueryへ入れず、`x-registry-username` / `x-registry-password` ヘッダで送信
 
 ### npm パッケージのダウンロード

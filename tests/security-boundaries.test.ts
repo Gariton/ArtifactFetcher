@@ -1,15 +1,72 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getEnvironmentVar } from '../src/components/actions';
 import { resolveDockerUploadLocation } from '../src/lib/docker/registryPusher';
+import {
+    readDockerPublicRuntimeConfig,
+    readNpmPublicRuntimeConfig,
+    readPipPublicRuntimeConfig,
+    readRpmPublicRuntimeConfig,
+} from '../src/lib/publicRuntimeConfig';
 import { redactSecrets, repositoriesForArtifact, type RpmRepository } from '../src/lib/rpm/downloader';
 
-test('client environment action never returns upload credentials', async () => {
-    const result = await getEnvironmentVar();
+test('public runtime configuration never returns upload credentials', () => {
+    const env = {
+        DOCKER_UPLOAD_USERNAME: 'docker-user',
+        DOCKER_UPLOAD_PASSWORD: 'docker-secret',
+        NPM_UPLOAD_AUTH_TOKEN: 'npm-secret',
+        PIP_UPLOAD_TOKEN: 'pip-secret',
+        RPM_UPLOAD_PASSWORD: 'rpm-secret',
+    };
+    const result = {
+        ...readDockerPublicRuntimeConfig(env),
+        ...readNpmPublicRuntimeConfig(env),
+        ...readPipPublicRuntimeConfig(env),
+        ...readRpmPublicRuntimeConfig(env),
+    };
     const keys = Object.keys(result);
     for (const key of keys) {
         assert.doesNotMatch(key, /(?:PASSWORD|USERNAME|AUTH_TOKEN|UPLOAD_TOKEN)$/);
     }
+    const serialized = JSON.stringify(result);
+    for (const secret of Object.values(env)) {
+        assert.equal(serialized.includes(secret), false);
+    }
+});
+
+test('public runtime configuration reads values supplied at request time', () => {
+    const env = {
+        DOCKER_UPLOAD: 'true',
+        DOCKER_UPLOAD_REGISTRY: 'https://docker.example.test',
+        NPM_UPLOAD: 'yes',
+        NPM_UPLOAD_REGISTRY: 'https://npm.example.test',
+        PIP_UPLOAD: '1',
+        PIP_UPLOAD_REGISTRY: 'https://pip.example.test',
+        PIP_UPLOAD_SKIP_EXISTING: 'true',
+        RPM_UPLOAD: 'on',
+        RPM_UPLOAD_REPOSITORY_URL: 'https://rpm.example.test',
+        RPM_UPLOAD_METHOD: 'post',
+        RPM_UPLOAD_IGNORE_TLS_VERIFY: 'true',
+    };
+
+    assert.deepEqual(readDockerPublicRuntimeConfig(env), {
+        DOCKER_UPLOAD: 'true',
+        DOCKER_UPLOAD_REGISTRY: 'https://docker.example.test',
+    });
+    assert.deepEqual(readNpmPublicRuntimeConfig(env), {
+        NPM_UPLOAD: 'yes',
+        NPM_UPLOAD_REGISTRY: 'https://npm.example.test',
+    });
+    assert.deepEqual(readPipPublicRuntimeConfig(env), {
+        PIP_UPLOAD: '1',
+        PIP_UPLOAD_REGISTRY: 'https://pip.example.test',
+        PIP_UPLOAD_SKIP_EXISTING: 'true',
+    });
+    assert.deepEqual(readRpmPublicRuntimeConfig(env), {
+        RPM_UPLOAD: 'on',
+        RPM_UPLOAD_REPOSITORY_URL: 'https://rpm.example.test',
+        RPM_UPLOAD_METHOD: 'post',
+        RPM_UPLOAD_IGNORE_TLS_VERIFY: 'true',
+    });
 });
 
 const repository: RpmRepository = {

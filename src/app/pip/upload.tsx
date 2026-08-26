@@ -13,6 +13,7 @@ import { CarbonForm, CarbonSection, CarbonField, CarbonPassword, CarbonCheckbox,
 import { nanoid } from 'nanoid';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileItem } from '@/components/Upload/FileItem';
+import type { PipPublicRuntimeConfig } from '@/lib/publicRuntimeConfig';
 
 type Status = 'idle' | 'running' | 'done' | 'error';
 
@@ -20,12 +21,6 @@ type PerFileState = {
     received: number;
     total?: number;
     status: string;
-};
-
-type EnvProps = {
-    PIP_UPLOAD: string;
-    PIP_UPLOAD_REGISTRY: string;
-    PIP_UPLOAD_SKIP_EXISTING: string;
 };
 
 type FormValues = {
@@ -40,7 +35,7 @@ type FormValues = {
 
 const FLUSH_INTERVAL = 250;
 
-export function UploadPane({ env }: { env: EnvProps }) {
+export function UploadPane({ env }: { env: PipPublicRuntimeConfig }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [jobId, setJobId] = useState<string | null>(null);

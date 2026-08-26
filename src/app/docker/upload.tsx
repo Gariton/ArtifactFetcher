@@ -10,9 +10,9 @@ import { Dropzone } from "@mantine/dropzone";
 import { nanoid } from "nanoid";
 import { FileItem } from "@/components/Upload/FileItem";
 import { UploadModal } from "@/components/Upload/Modal";
-import { getEnvironmentVar } from "@/components/actions";
 import { useRetryableEventSource } from "@/lib/useRetryableEventSource";
 import { buildAuthHeaders } from "@/lib/authHeaders";
+import type { DockerPublicRuntimeConfig } from "@/lib/publicRuntimeConfig";
 
 type FormType = {
     files: File[];
@@ -24,12 +24,7 @@ type FormType = {
     password: string;
 }
 
-type EnvType = {
-    DOCKER_UPLOAD: string;
-    DOCKER_UPLOAD_REGISTRY: string;
-}
-
-export function UploadPane() {
+export function UploadPane({ env }: { env: DockerPublicRuntimeConfig }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<null|string>(null);
     const [opened, {open, close}] = useDisclosure(false);
@@ -54,11 +49,6 @@ export function UploadPane() {
         }, FLUSH_INTERVAL);
     }, []);
     const stopSseRef = useRef<() => void>(() => {});
-    const [env, setEnv] = useState<EnvType>({
-        DOCKER_UPLOAD: "false",
-        DOCKER_UPLOAD_REGISTRY: "",
-    });
-    
     const handleSseMessage = useCallback((event: MessageEvent) => {
         try {
             const data = JSON.parse(event.data) as ProgressEvent;
@@ -412,19 +402,12 @@ export function UploadPane() {
     }, [loading, startUpload]);
 
     useEffect(() => {
-        getEnvironmentVar().then(v => {
-            setEnv({
-                DOCKER_UPLOAD: v.DOCKER_UPLOAD,
-                DOCKER_UPLOAD_REGISTRY: v.DOCKER_UPLOAD_REGISTRY,
-            })
-            form.setFieldValue("registry", v.DOCKER_UPLOAD_REGISTRY);
-        });
         return () => {
             if (flushTimerRef.current) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null; }
             stopSseRef.current();
             indexMapRef.current = new Map();
         };
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }, []);
 
     const failedCount = Object.values(perFileSnap).filter((state) => state?.status === 'error').length;
 

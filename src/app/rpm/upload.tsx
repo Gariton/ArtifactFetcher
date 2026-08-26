@@ -12,13 +12,7 @@ import { IconAlertCircle, IconCloudUpload, IconKey, IconServer, IconX } from '@t
 import { CarbonCard, CarbonSection, CarbonField, CarbonPassword, CarbonSegmented, CarbonCheckbox, CarbonAuthPanel, CarbonFooter, CarbonSubmit, CarbonList, carbonClasses, carbonDropzoneClasses } from '@/components/CarbonForm';
 import { nanoid } from 'nanoid';
 import { useCallback, useEffect, useRef, useState } from 'react';
-
-type EnvProps = {
-    RPM_UPLOAD: string;
-    RPM_UPLOAD_REPOSITORY_URL: string;
-    RPM_UPLOAD_METHOD: string;
-    RPM_UPLOAD_IGNORE_TLS_VERIFY: string;
-};
+import type { RpmPublicRuntimeConfig } from '@/lib/publicRuntimeConfig';
 
 type PerFileState = { received: number; total?: number; status: string };
 
@@ -34,7 +28,7 @@ type FormValues = {
 
 const FLUSH_INTERVAL = 250;
 
-export function UploadPane({ env }: { env: EnvProps }) {
+export function UploadPane({ env }: { env: RpmPublicRuntimeConfig }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [jobId, setJobId] = useState<string | null>(null);

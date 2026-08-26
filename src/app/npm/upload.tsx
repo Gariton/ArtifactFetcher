@@ -9,9 +9,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ProgressEvent } from '@/lib/progressBus';
 import { FileItem } from '@/components/Upload/FileItem';
 import { PackageUploadModal } from '@/components/PackageUpload/Modal';
-import { getEnvironmentVar } from '@/components/actions';
 import { useRetryableEventSource } from '@/lib/useRetryableEventSource';
 import { buildAuthHeaders } from '@/lib/authHeaders';
+import type { NpmPublicRuntimeConfig } from '@/lib/publicRuntimeConfig';
 import { CarbonForm, CarbonSection, CarbonField, CarbonPassword, CarbonAuthPanel, CarbonFooter, CarbonSubmit, CarbonGhostButton, CarbonList, carbonClasses, carbonDropzoneClasses } from '@/components/CarbonForm';
 
 const FLUSH_INTERVAL = 250;
@@ -26,7 +26,7 @@ type FormValues = {
 
 type FileProgressState = { received: number; total?: number; status: string };
 
-export function UploadPane() {
+export function UploadPane({ env }: { env: NpmPublicRuntimeConfig }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [jobId, setJobId] = useState<string | null>(null);
@@ -68,7 +68,7 @@ export function UploadPane() {
         mode: 'controlled',
         initialValues: {
             files: [],
-            registryUrl: '',
+            registryUrl: env.NPM_UPLOAD_REGISTRY || '',
             authToken: '',
             username: '',
             password: '',
@@ -355,9 +355,6 @@ export function UploadPane() {
     }, [loading, startUpload]);
 
     useEffect(() => {
-        getEnvironmentVar().then(v => {
-            form.setFieldValue("registryUrl", v.NPM_UPLOAD_REGISTRY);
-        });
         return () => {
             if (flushTimerRef.current) {
                 clearTimeout(flushTimerRef.current);
@@ -366,7 +363,7 @@ export function UploadPane() {
             stopSseRef.current();
             indexMapRef.current = new Map();
         };
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }, []);
 
     const failedCount = Object.values(perFileSnap).filter((state) => state?.status === 'error').length;
 

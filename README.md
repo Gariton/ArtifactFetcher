@@ -86,6 +86,24 @@ docker buildx build \
 `.github/workflows/ci.yml` が pull request と main への push で `npm ci`、型検査、ESLint、単体テスト、
 本番ビルド、production dependency audit を実行します。
 
+### Docker Hub へリリース
+
+GitHubリポジトリの Actions secrets に、Docker HubのPersonal Access Tokenを
+`DOCKERHUB_TOKEN` という名前で登録します。トークンには `gariton/artifactfetcher` への
+push権限が必要です。
+
+`v5.9.1` のような正式なセマンティックバージョンのGitタグをpushすると、
+`.github/workflows/docker-publish.yml` が `linux/amd64` イメージをビルドし、次の2タグを
+Docker Hubへpushします。
+
+- `gariton/artifactfetcher:v5.9.1`
+- `gariton/artifactfetcher:latest`
+
+```bash
+git tag v5.9.1
+git push origin v5.9.1
+```
+
 ---
 
 ## 環境変数

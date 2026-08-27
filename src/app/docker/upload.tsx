@@ -16,13 +16,19 @@ import type { DockerPublicRuntimeConfig } from "@/lib/publicRuntimeConfig";
 
 type FormType = {
     files: File[];
-    useManifest: boolean;
     registry: string;
-    repo: string;
-    tag: string;
     username: string;
     password: string;
 }
+
+type FileTarget = {
+    useManifest: boolean;
+    repository: string;
+    tags: string;
+};
+
+const defaultFileTarget = (): FileTarget => ({ useManifest: true, repository: '', tags: '' });
+const splitTags = (value: string) => value.split(',').map((tag) => tag.trim()).filter(Boolean);
 
 const DOCKER_ARCHIVE_ACCEPT = {
     'application/x-tar': ['.tar', '.tar.gz'],
@@ -39,6 +45,7 @@ export function UploadPane({ env }: { env: DockerPublicRuntimeConfig }) {
     
     const [jobId, setJobId] = useState<string|null>(null);
     const manifests = useMap<string, Layer[]>();
+    const [fileTargets, setFileTargets] = useState<FileTarget[]>([]);
     
     const perFileRef = useRef<Record<number, { received: number; total?: number; status: string; }>>({});
     const perLayerRef = useRef<Map<string, Record<number, {received: number; total?: number; status: "process"|"done"|"skipped";}>>>(new Map());
@@ -283,17 +290,12 @@ export function UploadPane({ env }: { env: DockerPublicRuntimeConfig }) {
         mode: "controlled",
         initialValues: {
             files: [],
-            useManifest: true,
             registry: env.DOCKER_UPLOAD_REGISTRY || '',
-            repo: "",
-            tag: "",
             username: '',
             password: ''
         },
         validate: {
             registry: (v) => v=="" ? "レジストリを指定してください" : null,
-            repo: (v, x) => v==""&&!x.useManifest ? "リポジトリを指定してください" : null,
-            tag: (v, x) => v==""&&!x.useManifest ? "タグを指定してください" : null,
         }
     })
     
@@ -302,6 +304,7 @@ export function UploadPane({ env }: { env: DockerPublicRuntimeConfig }) {
         const allFiles = currentValues.files;
         const indices = (targetIndices ?? allFiles.map((_, idx) => idx)).filter((idx) => idx >= 0 && idx < allFiles.length && allFiles[idx]);
         const filesToUpload = indices.map((idx) => allFiles[idx]!);
+        const targetsToUpload = indices.map((idx) => fileTargets[idx] ?? defaultFileTarget());
 
         if (filesToUpload.length === 0) {
             setError("Dockerイメージファイルを選択してください");
@@ -313,13 +316,14 @@ export function UploadPane({ env }: { env: DockerPublicRuntimeConfig }) {
             setError("レジストリを指定してください");
             return;
         }
-        if (!currentValues.useManifest) {
-            if (!currentValues.repo.trim()) {
-                setError("リポジトリを指定してください");
+        for (let i = 0; i < targetsToUpload.length; i++) {
+            const target = targetsToUpload[i]!;
+            if (!target.useManifest && !target.repository.trim()) {
+                setError(`${filesToUpload[i]!.name}: リポジトリを指定してください`);
                 return;
             }
-            if (!currentValues.tag.trim()) {
-                setError("タグを指定してください");
+            if (!target.useManifest && splitTags(target.tags).length === 0) {
+                setError(`${filesToUpload[i]!.name}: タグを1つ以上指定してください`);
                 return;
             }
         }
@@ -357,6 +361,11 @@ export function UploadPane({ env }: { env: DockerPublicRuntimeConfig }) {
         startSse(`/api/build/progress?jobId=${newJobId}`);
 
         const fd = new FormData();
+        fd.append('targets', JSON.stringify(targetsToUpload.map((target) => ({
+            useManifest: target.useManifest,
+            repository: target.repository.trim(),
+            tags: splitTags(target.tags),
+        }))));
         for (const file of filesToUpload) {
             fd.append('files', file, file.name);
         }
@@ -364,11 +373,8 @@ export function UploadPane({ env }: { env: DockerPublicRuntimeConfig }) {
         const qs = new URLSearchParams({
             jobId: newJobId,
             registry,
-            repository: currentValues.repo,
             insecureTLS: 'true',
             concurrency: '1',
-            tag: currentValues.tag,
-            useManifest: String(currentValues.useManifest),
         });
 
         try {
@@ -394,7 +400,7 @@ export function UploadPane({ env }: { env: DockerPublicRuntimeConfig }) {
             };
             setPerFileSnap({ ...perFileRef.current });
         }
-    }, [close, form, reset, startSse, stopSse]);
+    }, [close, fileTargets, form, reset, startSse, stopSse]);
 
     const onSubmit = form.onSubmit(() => {
         void startUpload();
@@ -421,7 +427,10 @@ export function UploadPane({ env }: { env: DockerPublicRuntimeConfig }) {
 
     const dockerFiles = form.getValues().files;
     const dockerCompleted = Object.values(perFileSnap).filter((s) => s?.status === "done" || s?.status === "published").length;
-    const useManifest = form.getValues().useManifest || dockerFiles.length > 1;
+
+    const updateFileTarget = (index: number, patch: Partial<FileTarget>) => {
+        setFileTargets((current) => current.map((target, targetIndex) => targetIndex === index ? { ...target, ...patch } : target));
+    };
 
     return (
         <div>
@@ -445,6 +454,7 @@ export function UploadPane({ env }: { env: DockerPublicRuntimeConfig }) {
                         onDrop={(dropped) => {
                             if (loading) return;
                             form.setFieldValue('files', dropped);
+                            setFileTargets(dropped.map(defaultFileTarget));
                             perFileRef.current = Object.fromEntries(
                                 dropped.map((file, idx) => [idx, { received: 0, total: file.size, status: 'waiting' }])
                             ) as Record<number, { received: number; total?: number; status: string }>;
@@ -472,37 +482,66 @@ export function UploadPane({ env }: { env: DockerPublicRuntimeConfig }) {
                     {dockerFiles.length > 0 && (
                         <CarbonList title={`キュー · ${dockerFiles.length} ファイル`} right={`${dockerCompleted} / ${dockerFiles.length} 完了`}>
                             {dockerFiles.map((file, i) => (
-                                <FileItem
-                                    key={i}
-                                    file={file}
-                                    percent={perFileSnap[i]?.status == "done" ? 100 : Math.floor(((perFileSnap[i]?.received ?? 0) / file.size) * 100)}
-                                    status={perFileSnap[i]?.status}
-                                    onDelete={() => {
-                                        if (loading) return;
-                                        const currentFiles = form.getValues().files;
-                                        const nextFiles = currentFiles.filter((_, idx) => idx !== i);
-                                        form.setFieldValue('files', nextFiles);
-                                        perFileRef.current = Object.fromEntries(
-                                            nextFiles.map((nextFile, index) => [index, { received: 0, total: nextFile.size, status: 'waiting' }])
-                                        ) as Record<number, { received: number; total?: number; status: string }>;
-                                        setPerFileSnap({ ...perFileRef.current });
-                                    }}
-                                />
+                                <div key={`${file.name}-${file.lastModified}-${i}`} style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 16, borderBottom: i < dockerFiles.length - 1 ? '1px solid var(--af-border)' : undefined }}>
+                                    <FileItem
+                                        file={file}
+                                        percent={perFileSnap[i]?.status == "done" ? 100 : Math.floor(((perFileSnap[i]?.received ?? 0) / file.size) * 100)}
+                                        status={perFileSnap[i]?.status}
+                                        onDelete={() => {
+                                            if (loading) return;
+                                            const currentFiles = form.getValues().files;
+                                            const nextFiles = currentFiles.filter((_, idx) => idx !== i);
+                                            form.setFieldValue('files', nextFiles);
+                                            setFileTargets((current) => current.filter((_, idx) => idx !== i));
+                                            perFileRef.current = Object.fromEntries(
+                                                nextFiles.map((nextFile, index) => [index, { received: 0, total: nextFile.size, status: 'waiting' }])
+                                            ) as Record<number, { received: number; total?: number; status: string }>;
+                                            setPerFileSnap({ ...perFileRef.current });
+                                        }}
+                                    />
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '0 8px' }}>
+                                        <CarbonCheckbox
+                                            checked={fileTargets[i]?.useManifest ?? true}
+                                            onChange={(checked) => updateFileTarget(i, { useManifest: checked })}
+                                            label="manifest のイメージ名・タグを使用する"
+                                            disabled={loading}
+                                        />
+                                        {(fileTargets[i]?.useManifest ?? true) ? (
+                                            <CarbonField
+                                                label="追加タグ"
+                                                optional
+                                                value={fileTargets[i]?.tags ?? ''}
+                                                onChange={(value) => updateFileTarget(i, { tags: value })}
+                                                placeholder="latest, stable"
+                                                desc="manifest のタグに加え、カンマ区切りで複数指定できます"
+                                                disabled={loading}
+                                            />
+                                        ) : (
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                                <CarbonField
+                                                    label="Repository"
+                                                    required
+                                                    icon={IconCube}
+                                                    value={fileTargets[i]?.repository ?? ''}
+                                                    onChange={(value) => updateFileTarget(i, { repository: value })}
+                                                    placeholder="library/redis"
+                                                    disabled={loading}
+                                                />
+                                                <CarbonField
+                                                    label="Tags"
+                                                    required
+                                                    value={fileTargets[i]?.tags ?? ''}
+                                                    onChange={(value) => updateFileTarget(i, { tags: value })}
+                                                    placeholder="7.2, latest, stable"
+                                                    desc="カンマ区切りで複数指定できます"
+                                                    disabled={loading}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             ))}
                         </CarbonList>
-                    )}
-
-                    <CarbonCheckbox
-                        checked={useManifest}
-                        onChange={(c) => form.setFieldValue('useManifest', c)}
-                        label="manifest の情報を使用する（イメージ名・タグを自動決定）"
-                        disabled={dockerFiles.length > 1}
-                    />
-                    {!useManifest && (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                            <CarbonField label="Repository" icon={IconCube} value={form.getValues().repo} onChange={(v) => form.setFieldValue('repo', v)} placeholder="library/redis" disabled={loading} />
-                            <CarbonField label="Tag" value={form.getValues().tag} onChange={(v) => form.setFieldValue('tag', v)} placeholder="7.2" disabled={loading} />
-                        </div>
                     )}
                 </CarbonSection>
 

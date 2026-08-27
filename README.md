@@ -254,13 +254,16 @@ npm run download -- npm next ^18 --host https://downloader.example.com --out dow
 
 ### Docker イメージの アップロード（tar / tar.gz → Registry）
 - 複数の `.tar` / `.tar.gz` を **multipart** で送信しながら、**受信進捗**を SSE で通知
-- 受信後、`useManifest=true` ならアーカイブ内の `manifest.json` から `repository:tag` を決定
+- ファイルごとに、アーカイブ内の `manifest.json` から `repository:tag` を決定するか、任意のrepository/tagsを指定可能
+- manifest利用時も元のタグを維持したまま、`latest` や `stable` など複数の追加タグを付与可能
 - Registry v2 API（`POST /blobs/uploads/` → `PATCH` → `PUT?digest=`）で push  
   - 既に存在する blob は `HEAD /blobs/<digest>` で検出し、**擬似進捗 100%** or `item-skip` を送出  
 
 #### API
-- `POST /api/docker/upload-multi?jobId=...&registry=...&useManifest=true`
-  body: `files[]=@image1.tar, files[]=@image2.tar.gz ...`
+- `POST /api/docker/upload-multi?jobId=...&registry=...`
+  body: `targets=<ファイル順のJSON配列>, files[]=@image1.tar, files[]=@image2.tar.gz ...`
+  - `targets`: `{ useManifest: boolean, repository?: string, tags: string[] }[]`
+  - `useManifest=true` の `tags` はmanifestのタグに追加され、`false` の場合は指定した全タグを使用
 - 一時入力の認証情報はqueryへ入れず、`x-registry-username` / `x-registry-password` ヘッダで送信
 
 ### npm パッケージのダウンロード

@@ -7,7 +7,8 @@ import Busboy from 'busboy';
 import { jobStore } from '@/lib/jobStore';
 import { FileInfo, ProgressBus, RepoTag, globalBusMap as busMap } from '@/lib/progressBus';
 import { normalizeDockerRegistryUrl, pushImageToRegistry } from '@/lib/docker/registryPusher';
-import { readLoadManifestFromTar, repoTagFromRepoTags, tagFromDockerArchiveName } from '@/lib/docker/readDockerLoadManifest';
+import { readLoadManifestFromTar, tagFromDockerArchiveName } from '@/lib/docker/readDockerLoadManifest';
+import { parseDockerUploadTargets, resolveDockerUploadTarget, type DockerUploadTarget } from '@/lib/docker/uploadTargets';
 import { resolveUploadAuth } from '@/lib/authHeaders';
 import { requireUploadAccess } from '@/lib/requestSecurity';
 import { isValidJobId } from '@/lib/inputSafety';
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
     try {
         bb = Busboy({
             headers: { 'content-type': contentType },
-            limits: { files: RESOURCE_LIMITS.maxUploadFiles, fileSize: RESOURCE_LIMITS.maxSingleFileBytes },
+            limits: { files: RESOURCE_LIMITS.maxUploadFiles, fields: 1, fieldSize: 256 * 1024, fileSize: RESOURCE_LIMITS.maxSingleFileBytes },
         });
     } catch (error) {
         return Response.json({ error: error instanceof Error ? error.message : 'invalid multipart request' }, { status: 400 });
@@ -103,10 +104,19 @@ export async function POST(req: NextRequest) {
     }
     const files: Array<FileInfo> = [];
     const saves: Promise<void>[] = [];
+    let targetsRaw: string | undefined;
 
     let uploadIndex = 0;
 
     const finished = new Promise<void>((resolve, reject) => {
+        bb.on('field', (name, value, info) => {
+            if (name !== 'targets') return;
+            if (info.valueTruncated) {
+                reject(new Error('upload targets metadata is too large'));
+                return;
+            }
+            targetsRaw = value;
+        });
         bb.on('file', (_field, fileStream, info) => {
             const safeName = path.basename(info.filename || `file-${Date.now()}.tar`);
             const myIndex = uploadIndex++;
@@ -139,6 +149,7 @@ export async function POST(req: NextRequest) {
             save.catch(() => {});
             saves.push(save);
         });
+        bb.on('fieldsLimit', () => reject(new Error('too many upload metadata fields')));
         bb.on('filesLimit', () => reject(new Error(`file count exceeds limit (${RESOURCE_LIMITS.maxUploadFiles})`)));
         bb.on('error', reject);
         bb.on('close', resolve);
@@ -192,31 +203,40 @@ export async function POST(req: NextRequest) {
         return new Response(JSON.stringify({ error: 'no files' }), { status: 400 });
     }
 
+    let uploadTargets: DockerUploadTarget[];
+    try {
+        uploadTargets = targetsRaw
+            ? parseDockerUploadTargets(targetsRaw, files.length)
+            : files.map((file) => ({
+                useManifest,
+                repository: ctx.repository,
+                tags: ctx.tag ? [ctx.tag] : (useManifest ? [] : [tagFromDockerArchiveName(file.name) || 'latest']),
+            }));
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'invalid upload targets';
+        try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch {}
+        jobStore.set(jobId, { status: 'error', error: message });
+        bus.emitEvent({ type: 'error', message });
+        return Response.json({ error: message }, { status: 400 });
+    }
+
     (async () => {
         try {
             // 全体の件数を先に通知
             bus.emitEvent({ type: 'stage', stage: 'prepare' });
 
             // 先にrepoとtagを割り出す
-            const repoTags: RepoTag[] = await Promise.all(files.map(async f => {
-                let repository = ctx.repository;
-                let tag = ctx.tag;
-                if (useManifest) {
-                    const mf = await readLoadManifestFromTar(f.tmpPath);
-                    if (!mf) throw new Error(`manifest.json not found in ${f.name}`);
-                    const picked = repoTagFromRepoTags(mf.RepoTags);
-                    if (!picked.repository || !picked.tag) {
-                        throw new Error(`RepoTags invalid in ${f.name}`);
-                    }
-                    repository = picked.repository;
-                    tag = picked.tag;
-                } else {
-                    if (!repository) throw new Error('repository is required when useManifest=false');
-                    if (!tag) tag = tagFromDockerArchiveName(f.name) || 'latest';
+            const resolvedTargets = await Promise.all(files.map(async (file, index) => {
+                const target = uploadTargets[index]!;
+                const manifest = target.useManifest ? await readLoadManifestFromTar(file.tmpPath) : undefined;
+                try {
+                    return resolveDockerUploadTarget(target, manifest);
+                } catch (error) {
+                    throw new Error(`${file.name}: ${error instanceof Error ? error.message : 'invalid upload target'}`);
                 }
-                return { repository, tag };
             }));
 
+            const repoTags: RepoTag[] = resolvedTargets.map(({ repository, tags }) => ({ repository, tag: tags.join(',') }));
             bus.emitEvent({ type: 'repo-tag-resolved', items: repoTags });
             
             const successes: Array<{ name: string; index: number }> = [];
@@ -224,16 +244,16 @@ export async function POST(req: NextRequest) {
 
             for (let i = 0; i < files.length; i++) {
                 const file = files[i]!;
-                const repotag = repoTags[i]!;
-                const { repository, tag } = repotag;
+                const { repository, tags } = resolvedTargets[i]!;
+                const targetLabel = `${repository}:${tags.join(',')}`;
                 jobStore.set(jobId, { status: 'running', filename: file.name });
-                bus.emitEvent({ type: 'stage', stage: `push-start: ${file.name} -> ${repository}:${tag}` });
-                bus.emitEvent({ type: 'item-start', scope: 'push-image', index: i, digest: `${repository}:${tag}` });
+                bus.emitEvent({ type: 'stage', stage: `push-start: ${file.name} -> ${targetLabel}` });
+                bus.emitEvent({ type: 'item-start', scope: 'push-image', index: i, digest: targetLabel });
                 try {
                     await pushImageToRegistry({
                         registry: ctx.registry,
                         repository,
-                        tag,
+                        tags,
                         sourceTarPath: file.tmpPath,
                         username: ctx.username,
                         password: ctx.password,

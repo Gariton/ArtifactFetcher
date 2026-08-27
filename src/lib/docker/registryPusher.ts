@@ -14,7 +14,8 @@ import { MAX_DOCKER_MANIFEST_BYTES } from '@/lib/docker/readDockerLoadManifest';
 export type PushOptions = {
     registry: string;           // e.g. https://nexus.example.com
     repository: string;         // e.g. myproj/redis
-    tag: string;                // e.g. 7.2
+    tag?: string;               // backwards-compatible single tag
+    tags?: string[];            // tags sharing the same image manifest
     sourceTarPath?: string;     // path to docker-load tar built by our downloader
     sourceDir?: string;         // alternatively, directory containing manifest.json + layers/
     username?: string;          // basic auth (Nexus3)
@@ -162,14 +163,11 @@ async function startUpload(c: any, repo: string, headers: any) {
     return c.post(`/v2/${repo}/blobs/uploads/`, null, { headers });
 }
 
-async function pushBlob(c: any, repo: string, tag: string, digest: string, file: string, bus: ProgressBus, index: number, headers: any) {
+async function pushBlob(c: any, repo: string, manifestName: string, digest: string, file: string, bus: ProgressBus, index: number, headers: any) {
     // existence check
     const head = await headBlob(c, repo, digest, headers);
     if (head.status === 200) {
-        // bus.emitEvent({ type: 'item-start', scope: 'push-item', manifestName: `${repo}@${tag}`, index, total: 100, digest});
-        // bus.emitEvent({ type: 'item-progress', scope: 'push-item', manifestName: `${repo}@${tag}`, index, received: 100});
-        // bus.emitEvent({ type: 'item-done', scope: 'push-item', manifestName: `${repo}@${tag}`, index });
-        bus.emitEvent({ type: 'item-skip', scope: 'push-item', manifestName: `${repo}@${tag}`, index, reason: "exists"});
+        bus.emitEvent({ type: 'item-skip', scope: 'push-item', manifestName, index, reason: "exists"});
         return;
     }
     
@@ -183,7 +181,7 @@ async function pushBlob(c: any, repo: string, tag: string, digest: string, file:
     
     // PATCH (stream data)
     const stat = fs.statSync(file);
-    bus.emitEvent({ type: 'item-start', scope: 'push-item', manifestName: `${repo}@${tag}`, index, digest, total: stat.size });
+    bus.emitEvent({ type: 'item-start', scope: 'push-item', manifestName, index, digest, total: stat.size });
     const stream = fs.createReadStream(file);
     const patch = await c.request({
         method: 'PATCH', url: uploadUrl,
@@ -193,7 +191,7 @@ async function pushBlob(c: any, repo: string, tag: string, digest: string, file:
         maxContentLength: Infinity,
         onUploadProgress: (p: AxiosProgressEvent) => {
             const received = p.loaded || 0;
-            bus.emitEvent({ type: 'item-progress', scope: 'push-item', manifestName: `${repo}@${tag}`, index, received, total: stat.size });
+            bus.emitEvent({ type: 'item-progress', scope: 'push-item', manifestName, index, received, total: stat.size });
         },
         maxRedirects: 0,
         validateStatus: (s: number) => s >= 200 && s < 500,
@@ -213,7 +211,7 @@ async function pushBlob(c: any, repo: string, tag: string, digest: string, file:
         validateStatus: (s: number) => s >= 200 && s < 500,
     });
     if (put.status !== 201) throw new Error(`finalize failed: ${put.status}`);
-    bus.emitEvent({ type: 'item-done', scope: 'push-item', manifestName: `${repo}@${tag}`, index });
+    bus.emitEvent({ type: 'item-done', scope: 'push-item', manifestName, index });
 }
 
 async function putManifest(c: any, repo: string, tag: string, manifest: any, headers: any) {
@@ -227,7 +225,9 @@ export async function pushImageToRegistry(opts: PushOptions) {
     const { sourceTarPath, sourceDir, username, password, insecureTLS, bus } = opts;
     const registryUrl = new URL(normalizeDockerRegistryUrl(opts.registry, Boolean(username || password)));
     const repository = assertDockerRepository(opts.repository);
-    const tag = assertDockerTag(opts.tag);
+    const tags = Array.from(new Set([...(opts.tag ? [opts.tag] : []), ...(opts.tags ?? [])].map(assertDockerTag)));
+    if (tags.length === 0) throw new Error('at least one tag is required');
+    const manifestName = `${repository}@${tags.join(',')}`;
     bus.emitEvent({ type: 'stage', stage: 'prepare' });
     
     // materialize input
@@ -291,18 +291,20 @@ export async function pushImageToRegistry(opts: PushOptions) {
 
         // upload config
         bus.emitEvent({ type: 'stage', stage: 'upload-config' });
-        await pushBlob(c, repository, tag, configDigest, configPath, bus, -1, authHeader(username, password));
+        await pushBlob(c, repository, manifestName, configDigest, configPath, bus, -1, authHeader(username, password));
 
         // upload layers
-        bus.emitEvent({ type: 'manifest-resolved', items: layers, manifestName: `${opts.repository}@${opts.tag}` } as any);
+        bus.emitEvent({ type: 'manifest-resolved', items: layers, manifestName });
         for (let i = 0; i < layerFiles.length; i++) {
             bus.emitEvent({ type: 'stage', stage: `upload-layer-${i}` });
-            await pushBlob(c, repository, tag, layerDigests[i], layerFiles[i], bus, i, authHeader(username, password));
+            await pushBlob(c, repository, manifestName, layerDigests[i], layerFiles[i], bus, i, authHeader(username, password));
         }
 
         // put manifest (tag)
         bus.emitEvent({ type: 'stage', stage: 'put-manifest' });
-        await putManifest(c, repository, tag, manifest, authHeader(username, password));
+        for (const tag of tags) {
+            await putManifest(c, repository, tag, manifest, authHeader(username, password));
+        }
     } finally {
         if (ownsWorkDir && workDir) {
             try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
